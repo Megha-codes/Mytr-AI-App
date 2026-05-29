@@ -1,0 +1,63 @@
+# ── Secrets & environment ─────────────────────────────────────────────────────
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# ── Python / FastAPI backend ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+backend/venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+*.log
+celerybeat-schedule
+celerybeat.pid
+
+# ── Flutter / Dart frontend ───────────────────────────────────────────────────
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.packages
+frontend/build/
+frontend/.pub-cache/
+frontend/.pub/
+frontend/pubspec.lock
+*.iml
+*.class
+*.apk
+*.aab
+*.ipa
+*.dSYM.zip
+*.dSYM
+GeneratedPluginRegistrant.dart
+
+# ── IDE & OS ──────────────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Database ──────────────────────────────────────────────────────────────────
+*.sqlite
+*.db
+
+# ── Misc project files ────────────────────────────────────────────────────────
+backend_tree.txt
+frontend_tree.txt
+metasync_backend_tree.txt
+metasync_frontend_tree.txt
+project_structure.txt
