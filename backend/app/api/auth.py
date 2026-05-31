@@ -66,7 +66,39 @@ class LoginRequest(BaseModel):
     device_name: Optional[str] = None
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 # ── Endpoints ─────────────────────────────────────────────────────────────────
+@router.post("/refresh", response_model=LoginResponse)
+async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    try:
+        payload = jwt.decode(request.refresh_token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("sub")
+        if user_id is None:
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+
+    access_token = create_access_token(str(user.id))
+    new_refresh_token = create_refresh_token(str(user.id))
+    user_type = user.diabetes_type.lower() if user.diabetes_type else "fitness"
+
+    return LoginResponse(
+        access_token=access_token,
+        refresh_token=new_refresh_token,
+        user_id=str(user.id),
+        user_type=user_type,
+        name=user.name,
+    )
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     email = request.email.strip().lower()
