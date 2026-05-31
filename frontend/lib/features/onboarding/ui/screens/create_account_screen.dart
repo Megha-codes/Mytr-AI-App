@@ -8,13 +8,13 @@ import '../../../../core/api/api_client.dart';
 import '../../onboarding_provider.dart';
 import '../widgets/onboarding_layout.dart';
 import 'package:lucide_icons/lucide_icons.dart';
-import 'package:dio/dio.dart';
 
 class CreateAccountScreen extends ConsumerStatefulWidget {
   const CreateAccountScreen({super.key});
 
   @override
-  ConsumerState<CreateAccountScreen> createState() => _CreateAccountScreenState();
+  ConsumerState<CreateAccountScreen> createState() =>
+      _CreateAccountScreenState();
 }
 
 class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
@@ -22,18 +22,28 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
   bool _obscureConfirmPassword = true;
   bool _isCheckingEmail = false;
 
-  final FormGroup form = FormGroup({
-    'fullName': FormControl<String>(validators: [Validators.required, Validators.minLength(2)]),
-    'email': FormControl<String>(validators: [Validators.required, Validators.email]),
-    'password': FormControl<String>(validators: [
-      Validators.required, 
-      Validators.minLength(8), 
-      Validators.pattern(RegExp(r'.*[0-9].*'), validationMessage: 'must contain a number')
-    ]),
-    'confirmPassword': FormControl<String>(validators: [Validators.required]),
-  }, validators: [
-    const MustMatchValidator('password', 'confirmPassword', true)
-  ]);
+  final FormGroup form = FormGroup(
+    {
+      'fullName': FormControl<String>(
+        validators: [Validators.required, Validators.minLength(2)],
+      ),
+      'email': FormControl<String>(
+        validators: [Validators.required, Validators.email],
+      ),
+      'password': FormControl<String>(
+        validators: [
+          Validators.required,
+          Validators.minLength(8),
+          Validators.pattern(
+            RegExp(r'.*[0-9].*'),
+            validationMessage: 'must contain a number',
+          ),
+        ],
+      ),
+      'confirmPassword': FormControl<String>(validators: [Validators.required]),
+    },
+    validators: [const MustMatchValidator('password', 'confirmPassword', true)],
+  );
 
   int _calculatePasswordStrength(String password) {
     if (password.isEmpty) return 0;
@@ -41,7 +51,9 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
     if (password.length > 5) score++;
     if (password.length > 7) score++;
     if (RegExp(r'[0-9]').hasMatch(password)) score++;
-    if (RegExp(r'[A-Z]').hasMatch(password) || RegExp(r'[!@#\$%\^&\*]').hasMatch(password)) score++;
+    if (RegExp(r'[A-Z]').hasMatch(password) ||
+        RegExp(r'[!@#\$%\^&\*]').hasMatch(password))
+      score++;
     return score; // 0 to 4
   }
 
@@ -67,37 +79,51 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                       ? () async {
                           final data = form.value;
                           final email = data['email'] as String;
-                          
+
                           setState(() {
                             _isCheckingEmail = true;
                           });
 
                           try {
                             final apiClient = ref.read(apiClientProvider);
-                            final response = await apiClient.get('/users/auth/check-email', queryParameters: {'email': email});
-                            
+                            final response = await apiClient.get(
+                              '/users/auth/check-email',
+                              queryParameters: {'email': email},
+                            );
+
                             if (response.data['exists'] == true) {
                               if (context.mounted) {
                                 showModalBottomSheet(
                                   context: context,
                                   backgroundColor: AppColors.surfaceWhite,
                                   shape: const RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+                                    borderRadius: BorderRadius.vertical(
+                                      top: Radius.circular(24),
+                                    ),
                                   ),
                                   builder: (context) => Padding(
                                     padding: const EdgeInsets.all(24.0),
                                     child: Column(
                                       mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
                                       children: [
                                         const Text(
                                           'Account already exists',
-                                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.nearBlack),
+                                          style: TextStyle(
+                                            fontSize: 20,
+                                            fontWeight: FontWeight.bold,
+                                            color: AppColors.nearBlack,
+                                          ),
                                         ),
                                         const SizedBox(height: 12),
                                         Text(
                                           'An account with $email already exists. Would you like to sign in instead?',
-                                          style: const TextStyle(fontSize: 14, color: AppColors.textSecondary, height: 1.5),
+                                          style: const TextStyle(
+                                            fontSize: 14,
+                                            color: AppColors.textSecondary,
+                                            height: 1.5,
+                                          ),
                                         ),
                                         const SizedBox(height: 24),
                                         PrimaryButton(
@@ -105,7 +131,10 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                                           variant: ButtonVariant.primary,
                                           onPressed: () {
                                             context.pop(); // close sheet
-                                            context.go('/auth/login', extra: email);
+                                            context.go(
+                                              '/auth/login',
+                                              extra: email,
+                                            );
                                           },
                                         ),
                                         const SizedBox(height: 12),
@@ -131,26 +160,34 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                                   email: email,
                                   password: data['password'] as String?,
                                 );
-                                
-                                final currentState = ref.read(onboardingProvider);
-                                ref.read(onboardingProvider.notifier).setPersonalInfo(
-                                  currentState.personalInfo?.copyWith(
-                                    fullName: info.fullName,
-                                    email: info.email,
-                                    password: info.password,
-                                  ) ?? info,
+
+                                final currentState = ref.read(
+                                  onboardingProvider,
                                 );
+                                ref
+                                    .read(onboardingProvider.notifier)
+                                    .setPersonalInfo(
+                                      currentState.personalInfo?.copyWith(
+                                            fullName: info.fullName,
+                                            email: info.email,
+                                            password: info.password,
+                                          ) ??
+                                          info,
+                                    );
                                 context.push('/onboarding/user-type');
                               }
                             }
                           } catch (e) {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('Error: ${e.toString()}')),
+                                SnackBar(
+                                  content: Text('Error: ${e.toString()}'),
+                                ),
                               );
                             }
                           } finally {
-                            if (mounted) setState(() => _isCheckingEmail = false);
+                            if (mounted)
+                              setState(() => _isCheckingEmail = false);
                           }
                         }
                       : null,
@@ -199,7 +236,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
               decoration: _inputDecoration('e.g. Arjun Sharma'),
             ),
             const SizedBox(height: 16),
-            
+
             _buildFieldLabel('EMAIL ADDRESS'),
             ReactiveTextField<String>(
               formControlName: 'email',
@@ -212,7 +249,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
               decoration: _inputDecoration('e.g. arjun@example.com'),
             ),
             const SizedBox(height: 16),
-            
+
             _buildFieldLabel('PASSWORD'),
             ReactiveTextField<String>(
               formControlName: 'password',
@@ -230,18 +267,19 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                     color: AppColors.textSecondary,
                     size: 18,
                   ),
-                  onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+                  onPressed: () =>
+                      setState(() => _obscurePassword = !_obscurePassword),
                 ),
               ),
             ),
-            
+
             // Password strength bar
             ReactiveValueListenableBuilder<String>(
               formControlName: 'password',
               builder: (context, control, child) {
                 final password = control.value ?? '';
                 final score = _calculatePasswordStrength(password);
-                
+
                 return Padding(
                   padding: const EdgeInsets.only(top: 8, bottom: 8),
                   child: Row(
@@ -258,7 +296,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
                           color = AppColors.cyan;
                         }
                       }
-                      
+
                       return Expanded(
                         child: Container(
                           height: 4,
@@ -275,7 +313,7 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
               },
             ),
             const SizedBox(height: 8),
-            
+
             _buildFieldLabel('CONFIRM PASSWORD'),
             ReactiveTextField<String>(
               formControlName: 'confirmPassword',
@@ -288,11 +326,15 @@ class _CreateAccountScreenState extends ConsumerState<CreateAccountScreen> {
               decoration: _inputDecoration('Re-enter password').copyWith(
                 suffixIcon: IconButton(
                   icon: Icon(
-                    _obscureConfirmPassword ? LucideIcons.eyeOff : LucideIcons.eye,
+                    _obscureConfirmPassword
+                        ? LucideIcons.eyeOff
+                        : LucideIcons.eye,
                     color: AppColors.textSecondary,
                     size: 18,
                   ),
-                  onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                  onPressed: () => setState(
+                    () => _obscureConfirmPassword = !_obscureConfirmPassword,
+                  ),
                 ),
               ),
             ),

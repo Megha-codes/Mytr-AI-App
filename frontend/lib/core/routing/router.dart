@@ -31,16 +31,22 @@ import '../../features/cgm/ui/screens/manual_connect_screen.dart';
 
 final GlobalKey<NavigatorState> _rootNavigatorKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
+class _RouterNotifier extends ChangeNotifier {
+  _RouterNotifier(this._ref) {
+    _ref.listen<AsyncValue<AuthState>>(authProvider, (_, _) => notifyListeners());
+  }
+  final Ref _ref;
+}
+
 final appRouterProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authProvider);
+  final notifier = _RouterNotifier(ref);
 
   return GoRouter(
     navigatorKey: _rootNavigatorKey,
     initialLocation: '/home',
-    refreshListenable: Listenable.merge([
-      // Add any other listenables if needed
-    ]),
+    refreshListenable: notifier,
     redirect: (context, state) {
+      final authState = ref.read(authProvider);
       final status = authState.valueOrNull?.status;
       final location = state.uri.path;
 
