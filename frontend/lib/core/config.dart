@@ -2,46 +2,31 @@ class AppConfig {
   AppConfig._();
 
   // ── API base URL ──────────────────────────────────────────────────────────
-  /// HTTP base URL for the FastAPI backend.
-  /// Override at build time with: --dart-define=API_BASE_URL=https://api.mytr.ai
+  /// HTTP base URL for the FastAPI backend, including the `/api/v1` version
+  /// prefix. Every REST router is mounted under `/api/v1`, so all call sites
+  /// use prefix-less paths (e.g. `/auth/login`, `/dashboard`) and the prefix
+  /// lives here exactly once.
+  ///
+  /// This is the single source of truth for the network layer (see
+  /// [Environment] for the dotenv-based defaults — they are kept in sync).
+  /// Override at build time with:
+  ///   --dart-define=API_BASE_URL=https://api.mytr.ai/api/v1
   static const apiBaseUrl = String.fromEnvironment(
     'API_BASE_URL',
-    defaultValue: 'http://10.0.2.2:8000', // Android emulator localhost
+    defaultValue: 'http://10.0.2.2:8000/api/v1', // Android emulator localhost
   );
 
   // ── WebSocket base URL ────────────────────────────────────────────────────
-  /// Derived automatically from apiBaseUrl by swapping the scheme.
-  /// e.g. http://... → ws://..., https://... → wss://...
+  /// Server origin with a ws/wss scheme. WebSocket routes are mounted at the
+  /// server root (`/ws/...`), NOT under `/api/v1`, so the version prefix is
+  /// stripped here. Call sites append the concrete path, e.g.
+  /// `'$wsBaseUrl/ws/glucose/$userId'`.
   static String get wsBaseUrl {
-    return apiBaseUrl
+    final origin = apiBaseUrl.replaceFirst(RegExp(r'/api/v\d+/?$'), '');
+    return origin
         .replaceFirst('https://', 'wss://')
         .replaceFirst('http://', 'ws://');
   }
-
-  // ── Dexcom OAuth ──────────────────────────────────────────────────────────
-  /// Dexcom developer client ID.
-  /// Override at build time with: --dart-define=DEXCOM_CLIENT_ID=abc123
-  static const dexcomClientId = String.fromEnvironment(
-    'DEXCOM_CLIENT_ID',
-    defaultValue: '',
-  );
-
-  /// Dexcom sandbox vs production host.
-  /// Override at build time with: --dart-define=DEXCOM_HOST=api.dexcom.com
-  static const dexcomApiHost = String.fromEnvironment(
-    'DEXCOM_HOST',
-    defaultValue: 'sandbox-api.dexcom.com', // sandbox for development
-  );
-
-  /// Path for the Dexcom OAuth login endpoint.
-  static const dexcomOAuthPath = '/v2/oauth2/login';
-
-  /// The custom URL scheme registered in AndroidManifest / Info.plist.
-  /// Must match the scheme in dexcomRedirectUri.
-  static const dexcomCallbackScheme = 'mytrai';
-
-  /// Full redirect URI passed to Dexcom OAuth.
-  static const dexcomRedirectUri = '$dexcomCallbackScheme://dexcom/callback';
 
   // ── FreeStyle Libre ───────────────────────────────────────────────────────
   /// LibreLinkUp API region.

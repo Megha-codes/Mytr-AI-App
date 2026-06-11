@@ -24,18 +24,14 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
   bool _isCameraReady = false;
   String _entryMode = 'PHOTO'; // PHOTO, SEARCH, MANUAL
 
-  // Manual entry controllers
   final _nameCtrl     = TextEditingController();
   final _caloriesCtrl = TextEditingController();
   final _carbsCtrl    = TextEditingController();
   final _proteinCtrl  = TextEditingController();
   final _fatCtrl      = TextEditingController();
-  bool _manualLoading = false; // toggled via setState during submit
+  bool _manualLoading = false;
 
-  // Search
   final _searchCtrl = TextEditingController();
-
-  // Gallery picker
   final _picker = ImagePicker();
 
   @override
@@ -48,7 +44,11 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
     final cameras = await availableCameras();
     if (cameras.isEmpty) return;
 
-    _controller = CameraController(cameras.first, ResolutionPreset.medium, enableAudio: false);
+    _controller = CameraController(
+      cameras.first,
+      ResolutionPreset.high,
+      enableAudio: false,
+    );
     try {
       await _controller!.initialize();
       if (mounted) setState(() => _isCameraReady = true);
@@ -72,53 +72,148 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
   @override
   Widget build(BuildContext context) {
     final recognitionAsync = ref.watch(mealRecognitionProvider);
-    final userAsync = ref.watch(userProfileProvider);
-    final inference = ref.watch(inferenceProvider);
-    final nutritionAsync = ref.watch(nutritionProvider);
+    final userAsync        = ref.watch(userProfileProvider);
+    final inference        = ref.watch(inferenceProvider);
+    final nutritionAsync   = ref.watch(nutritionProvider);
 
     return userAsync.when(
-      data: (user) => Scaffold(
-        backgroundColor: recognitionAsync.value == null ? AppTheme.backgroundDark : AppTheme.backgroundCream,
-        body: Column(
-          children: [
-            _buildTopZone(recognitionAsync, inference),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(AppTheme.screenPadding),
-                child: recognitionAsync.value == null
-                    ? _buildModeA(user.userType)
-                    : _buildModeB(recognitionAsync.value!, user, inference, nutritionAsync),
-              ),
-            ),
-          ],
-        ),
-      ),
+      data: (user) => _buildMain(user, recognitionAsync, inference, nutritionAsync),
       loading: () => const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, _) => Scaffold(body: Center(child: Text('Error: $e'))),
     );
   }
 
-  Widget _buildTopZone(AsyncValue<RecognitionResult?> recognition, InferenceState inference) {
-    final result = recognition.value;
-    if (result != null) {
-      return DetectionBanner(
-        meal: result.meal,
-        confidence: result.confidence.toStringAsFixed(1),
-      );
+  Widget _buildMain(
+    UserProfile user,
+    AsyncValue<RecognitionResult?> recognitionAsync,
+    InferenceState inference,
+    AsyncValue<NutritionState> nutritionAsync,
+  ) {
+    if (recognitionAsync.isLoading) return _buildProcessingScreen();
+    if (recognitionAsync.hasError)  return _buildErrorScreen(recognitionAsync.error!);
+    if (recognitionAsync.value != null) {
+      return _buildResultScreen(recognitionAsync.value!, user, inference, nutritionAsync);
     }
+    if (_entryMode == 'PHOTO') return _buildCameraScreen(user);
+    return _buildFormScreen(user);
+  }
 
-    return Container(
-      height: 450,
-      width: double.infinity,
-      color: Colors.black,
-      child: Stack(
+  // ── Fullscreen camera ──────────────────────────────────────────────────────
+
+  Widget _buildCameraScreen(UserProfile user) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Stack(
+        fit: StackFit.expand,
         children: [
-          if (_isCameraReady && _entryMode == 'PHOTO') CameraPreview(_controller!),
-          if (_entryMode == 'PHOTO') const CameraOverlay(),
+          if (_isCameraReady)
+            CameraPreview(_controller!)
+          else
+            const ColoredBox(color: Colors.black),
 
+          const CameraOverlay(),
+
+          // Top bar
           SafeArea(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Meal Scanner',
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                      TagPill(label: 'AI ACTIVE', backgroundColor: AppTheme.accentCyan, textColor: Colors.white),
+                    ],
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(LucideIcons.x, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Bottom controls
+          Positioned(
+            bottom: 0,
+            left: 0,
+            right: 0,
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(20, 24, 20, 44),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.bottomCenter,
+                  end: Alignment.topCenter,
+                  colors: [Colors.black.withValues(alpha: 0.85), Colors.transparent],
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(child: _ModeBtn(label: '📷 Photo', isActive: true, userType: user.userType, onTap: () {})),
+                      const SizedBox(width: 12),
+                      Expanded(child: _ModeBtn(label: '🔍 Search', isActive: false, userType: user.userType, onTap: () => setState(() => _entryMode = 'SEARCH'))),
+                      const SizedBox(width: 12),
+                      Expanded(child: _ModeBtn(label: '✏️ Manual', isActive: false, userType: user.userType, onTap: () => setState(() => _entryMode = 'MANUAL'))),
+                    ],
+                  ),
+                  const SizedBox(height: 28),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [
+                      _CircleIconBtn(icon: LucideIcons.image, onPressed: _handleGalleryPick),
+                      GestureDetector(
+                        onTap: _handleCapture,
+                        child: Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            border: Border.all(color: Colors.white, width: 4),
+                          ),
+                          child: Center(
+                            child: Container(
+                              width: 56,
+                              height: 56,
+                              decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ),
+                      _CircleIconBtn(
+                        icon: LucideIcons.flashlight,
+                        onPressed: _toggleFlash,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Processing (loading) screen ────────────────────────────────────────────
+
+  Widget _buildProcessingScreen() {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -126,55 +221,209 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Text('Meal Scanner', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-                      if (recognition.isLoading || inference.isLoading) 
-                         const Text('AI is processing...', style: TextStyle(color: AppTheme.accentCyan, fontSize: 12))
-                      else
-                         const TagPill(label: 'AI ACTIVE', backgroundColor: AppTheme.accentCyan, textColor: Colors.white),
+                      const Text(
+                        'Meal Scanner',
+                        style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                      Text(
+                        'AI is processing...',
+                        style: AppTheme.labelSmall.copyWith(color: AppTheme.accentCyan),
+                      ),
                     ],
                   ),
-                  IconButton(onPressed: () => Navigator.pop(context), icon: const Icon(LucideIcons.x, color: Colors.white)),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(LucideIcons.x, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const CircularProgressIndicator(color: AppTheme.accentCyan, strokeWidth: 3),
+                  const SizedBox(height: 24),
+                  Text(
+                    'Identifying your meal...',
+                    style: AppTheme.bodyMedium.copyWith(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Error screen ───────────────────────────────────────────────────────────
+
+  Widget _buildErrorScreen(Object error) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(LucideIcons.x, color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(LucideIcons.alertCircle, color: Colors.redAccent, size: 52),
+                      const SizedBox(height: 20),
+                      Text(
+                        _friendlyError(error),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(color: Colors.white, fontSize: 16, height: 1.5),
+                      ),
+                      const SizedBox(height: 32),
+                      ElevatedButton.icon(
+                        onPressed: () => ref.read(mealRecognitionProvider.notifier).reset(),
+                        icon: const Icon(LucideIcons.refreshCcw, size: 18),
+                        label: const Text('Try again'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.accentCyan,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Results screen ─────────────────────────────────────────────────────────
+
+  Widget _buildResultScreen(
+    RecognitionResult result,
+    UserProfile user,
+    InferenceState inference,
+    AsyncValue<NutritionState> nutritionAsync,
+  ) {
+    final isDiabetic = user.userType != UserType.fitness;
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundCream,
+      body: Column(
+        children: [
+          DetectionBanner(
+            meal: result.meal,
+            confidence: result.confidence.toStringAsFixed(1),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppTheme.screenPadding),
+              child: Column(
+                children: [
+                  if (result.requiresConfirmation && result.confirmationMessage != null) ...[
+                    _WarningBanner(message: result.confirmationMessage!),
+                    const SizedBox(height: 16),
+                  ],
+                  if (isDiabetic)
+                    BolusRecommendationCard(
+                      dose: inference.recommendedDose,
+                      adjustment: inference.lifestyleAdjustmentPercent,
+                      drivers: inference.drivers,
+                      confidence: inference.confidence,
+                      showDoctorFlag: inference.showDoctorFlag,
+                      onConfirm: () async {
+                        await ref.read(mealRecognitionProvider.notifier).confirmAndLog();
+                        if (mounted) Navigator.pop(context);
+                      },
+                    )
+                  else
+                    NutritionSummaryCard(
+                      meal: result.meal,
+                      onLog: () async {
+                        await ref.read(mealRecognitionProvider.notifier).confirmAndLog();
+                        if (mounted) Navigator.pop(context);
+                      },
+                    ),
+                  const SizedBox(height: 32),
+                  nutritionAsync.when(
+                    data: (nutrition) => MealHistoryList(meals: nutrition.todaysMeals),
+                    loading: () => const ListShimmer(count: 2),
+                    error: (_, _) => const SizedBox.shrink(),
+                  ),
                 ],
               ),
             ),
           ),
-
-          if (_entryMode == 'PHOTO' && !recognition.isLoading)
-            Positioned(
-              bottom: 30,
-              left: 0,
-              right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  _CircleIconBtn(icon: LucideIcons.image, onPressed: _handleGalleryPick),
-                  GestureDetector(
-                    onTap: _handleCapture,
-                    child: Container(
-                      width: 72,
-                      height: 72,
-                      decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.white, width: 4)),
-                      child: Center(child: Container(width: 56, height: 56, decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white))),
-                    ),
-                  ),
-                  _CircleIconBtn(icon: LucideIcons.search, onPressed: () => setState(() => _entryMode = 'SEARCH')),
-                ],
-              ),
-            ),
-          
-          if (recognition.isLoading)
-            const Center(child: CircularProgressIndicator(color: AppTheme.accentCyan)),
         ],
       ),
     );
   }
+
+  // ── Search / Manual form screen ────────────────────────────────────────────
+
+  Widget _buildFormScreen(UserProfile user) {
+    return Scaffold(
+      backgroundColor: AppTheme.backgroundCream,
+      body: Column(
+        children: [
+          Container(
+            color: AppTheme.backgroundDark,
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Meal Scanner',
+                      style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(LucideIcons.x, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(AppTheme.screenPadding),
+              child: _buildModeA(user.userType),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Mode A: photo/search/manual tab switcher ───────────────────────────────
 
   Widget _buildModeA(UserType userType) {
     return Column(
       children: [
         Row(
           children: [
-            Expanded(child: _ModeBtn(label: '📷 Photo', isActive: _entryMode == 'PHOTO', userType: userType, onTap: () => setState(() => _entryMode = 'PHOTO'))),
+            Expanded(child: _ModeBtn(label: '📷 Photo',  isActive: _entryMode == 'PHOTO',  userType: userType, onTap: () => setState(() => _entryMode = 'PHOTO'))),
             const SizedBox(width: 12),
             Expanded(child: _ModeBtn(label: '🔍 Search', isActive: _entryMode == 'SEARCH', userType: userType, onTap: () => setState(() => _entryMode = 'SEARCH'))),
             const SizedBox(width: 12),
@@ -184,42 +433,6 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
         const SizedBox(height: 24),
         if (_entryMode == 'SEARCH') _buildSearchSection(),
         if (_entryMode == 'MANUAL') _buildManualSection(),
-      ],
-    );
-  }
-
-  Widget _buildModeB(RecognitionResult result, UserProfile user, InferenceState inference, AsyncValue<NutritionState> nutritionAsync) {
-    final isDiabetic = user.userType != UserType.fitness;
-    
-    return Column(
-      children: [
-        if (isDiabetic) 
-          BolusRecommendationCard(
-            dose: inference.recommendedDose,
-            adjustment: inference.lifestyleAdjustmentPercent,
-            drivers: inference.drivers,
-            confidence: inference.confidence,
-            showDoctorFlag: inference.showDoctorFlag,
-            onConfirm: () async {
-               await ref.read(mealRecognitionProvider.notifier).confirmAndLog();
-               if (mounted) Navigator.pop(context);
-            },
-          )
-        else
-          NutritionSummaryCard(
-            meal: result.meal,
-            onLog: () async {
-               await ref.read(mealRecognitionProvider.notifier).confirmAndLog();
-               if (mounted) Navigator.pop(context);
-            },
-          ),
-        
-        const SizedBox(height: 32),
-        nutritionAsync.when(
-          data: (nutrition) => MealHistoryList(meals: nutrition.todaysMeals),
-          loading: () => const ListShimmer(count: 2),
-          error: (e, s) => const SizedBox.shrink(),
-        ),
       ],
     );
   }
@@ -236,7 +449,6 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
         onSubmitted: (val) {
           final trimmed = val.trim();
           if (trimmed.isEmpty) return;
-          // Pre-fill manual entry with the searched name and switch to MANUAL
           _nameCtrl.text = trimmed;
           setState(() => _entryMode = 'MANUAL');
         },
@@ -249,48 +461,21 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            controller: _nameCtrl,
-            decoration: const InputDecoration(labelText: 'Food Name'),
-          ),
+          TextField(controller: _nameCtrl, decoration: const InputDecoration(labelText: 'Food Name')),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _caloriesCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Calories'),
-                ),
-              ),
+              Expanded(child: TextField(controller: _caloriesCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Calories'))),
               const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _carbsCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Carbs (g)'),
-                ),
-              ),
+              Expanded(child: TextField(controller: _carbsCtrl,    keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Carbs (g)'))),
             ],
           ),
           const SizedBox(height: 8),
           Row(
             children: [
-              Expanded(
-                child: TextField(
-                  controller: _proteinCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Protein (g)'),
-                ),
-              ),
+              Expanded(child: TextField(controller: _proteinCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Protein (g)'))),
               const SizedBox(width: 8),
-              Expanded(
-                child: TextField(
-                  controller: _fatCtrl,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(labelText: 'Fat (g)'),
-                ),
-              ),
+              Expanded(child: TextField(controller: _fatCtrl,     keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Fat (g)'))),
             ],
           ),
           const SizedBox(height: 16),
@@ -303,6 +488,37 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
         ],
       ),
     );
+  }
+
+  // ── Capture handlers ───────────────────────────────────────────────────────
+
+  Future<void> _handleCapture() async {
+    if (_controller == null || !_controller!.value.isInitialized) return;
+    try {
+      final image = await _controller!.takePicture();
+      await ref.read(mealRecognitionProvider.notifier).recognizeMeal(File(image.path));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not capture photo: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleGalleryPick() async {
+    final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
+    if (picked == null) return;
+    await ref.read(mealRecognitionProvider.notifier).recognizeMeal(File(picked.path));
+  }
+
+  Future<void> _toggleFlash() async {
+    if (_controller == null || !_isCameraReady) return;
+    final current = _controller!.value.flashMode;
+    await _controller!.setFlashMode(
+      current == FlashMode.off ? FlashMode.torch : FlashMode.off,
+    );
+    setState(() {});
   }
 
   Future<void> _handleManualSubmit() async {
@@ -343,22 +559,55 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
     }
   }
 
-  Future<void> _handleGalleryPick() async {
-    final picked = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 85);
-    if (picked == null) return;
-    await ref.read(mealRecognitionProvider.notifier).recognizeMeal(File(picked.path));
-  }
+  // ── Helpers ────────────────────────────────────────────────────────────────
 
-  void _handleCapture() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
-    try {
-      final image = await _controller!.takePicture();
-      await ref.read(mealRecognitionProvider.notifier).recognizeMeal(File(image.path));
-    } catch (e) {
-      debugPrint('Capture error: $e');
+  String _friendlyError(Object error) {
+    final msg = error.toString().toLowerCase();
+    if (msg.contains('401') || msg.contains('unauthorized') || msg.contains('not authenticated')) {
+      return 'Your session has expired.\nPlease log in again.';
     }
+    if (msg.contains('503') || msg.contains('502') || msg.contains('google_api_key') || msg.contains('service unavailable')) {
+      return 'Food recognition is temporarily unavailable.\nPlease try again shortly.';
+    }
+    if (msg.contains('timeout') || msg.contains('connection') || msg.contains('network') || msg.contains('socket')) {
+      return 'Network error.\nCheck your connection and try again.';
+    }
+    if (msg.contains('10 mb') || msg.contains('image exceeds')) {
+      return 'Photo is too large.\nTry a lower-quality image.';
+    }
+    return 'Something went wrong.\nPlease try again.';
   }
 }
+
+// ── Warning banner (shown when no USDA data found) ────────────────────────────
+
+class _WarningBanner extends StatelessWidget {
+  final String message;
+  const _WarningBanner({required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade300),
+      ),
+      child: Row(
+        children: [
+          Icon(LucideIcons.alertTriangle, size: 18, color: Colors.amber.shade800),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(message, style: TextStyle(color: Colors.amber.shade900, fontSize: 13)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Shared button widgets ──────────────────────────────────────────────────────
 
 class _ModeBtn extends StatelessWidget {
   final String label;
@@ -379,7 +628,12 @@ class _ModeBtn extends StatelessWidget {
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: isActive ? activeColor : AppTheme.borderLight),
         ),
-        child: Center(child: Text(label, style: AppTheme.labelSmall.copyWith(color: isActive ? Colors.white : AppTheme.textPrimary))),
+        child: Center(
+          child: Text(
+            label,
+            style: AppTheme.labelSmall.copyWith(color: isActive ? Colors.white : AppTheme.textPrimary),
+          ),
+        ),
       ),
     );
   }
@@ -395,7 +649,10 @@ class _CircleIconBtn extends StatelessWidget {
     return IconButton(
       onPressed: onPressed,
       icon: Icon(icon, color: Colors.white, size: 24),
-      style: IconButton.styleFrom(backgroundColor: Colors.white.withValues(alpha: 0.2), padding: const EdgeInsets.all(12)),
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.white.withValues(alpha: 0.2),
+        padding: const EdgeInsets.all(12),
+      ),
     );
   }
 }

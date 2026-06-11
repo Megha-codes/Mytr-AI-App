@@ -41,7 +41,6 @@ CREATE TABLE cgm_devices (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id         UUID REFERENCES users(id) ON DELETE CASCADE,
     device_type     TEXT CHECK (device_type IN (
-                        'DEXCOM_G6', 'DEXCOM_G7',
                         'LIBRE_2', 'LIBRE_3', 'MANUAL'
                     )),
     is_active       BOOLEAN DEFAULT true,

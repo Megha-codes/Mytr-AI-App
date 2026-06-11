@@ -183,10 +183,8 @@ async def _start_polling_loop(
 ):
     cgm_service = cgm_service_factory(device_type)
 
-    # Dexcom and Libre sensors update every 5 minutes
+    # Libre sensors update roughly every minute
     poll_interval_seconds = {
-        "DEXCOM_G6": 60,
-        "DEXCOM_G7": 60,
         "LIBRE_2":   60,
         "LIBRE_3":   60,
     }.get(device_type, 60)

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../../core/api/api_client.dart';
+import '../../../../core/config.dart';
 import '../../home/models/models.dart';
 
 class AchievementState {
@@ -56,8 +57,9 @@ class AchievementsNotifier extends AutoDisposeAsyncNotifier<AchievementState> {
   }
 
   void _initWebSocket() {
-    final baseUrl = const String.fromEnvironment('WS_BASE_URL', defaultValue: 'ws://localhost:8000');
-    _channel = WebSocketChannel.connect(Uri.parse('$baseUrl/ws/notifications/current_user'));
+    _channel = WebSocketChannel.connect(
+      Uri.parse('${AppConfig.wsBaseUrl}/ws/notifications/current_user'),
+    );
 
     _channel!.stream.listen((message) {
       final data = jsonDecode(message);

@@ -18,7 +18,7 @@
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED"/>
 
     <application
-        android:label="frontend"
+        android:label="Mytr.AI"
         android:networkSecurityConfig="@xml/network_security_config"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
@@ -42,6 +42,14 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Deep links: mytrai://reset-password?token=... and
+                 mytrai://verify-email?token=... -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="mytrai"/>
             </intent-filter>
             <!-- Health Connect Intent Filter -->
             <intent-filter>

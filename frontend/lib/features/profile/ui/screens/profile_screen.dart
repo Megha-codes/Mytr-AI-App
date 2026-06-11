@@ -6,6 +6,7 @@ import '../../../../core/widgets/dark_header.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/stat_widgets.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
+import '../../../auth/providers/auth_provider.dart';
 import '../../providers/user_profile_provider.dart';
 import '../../providers/profile_provider.dart';
 import '../../providers/achievements_provider.dart';
@@ -59,7 +60,7 @@ class ProfileScreen extends ConsumerWidget {
                         _buildSettingsSection(context, ref),
                         const SizedBox(height: 40),
                         TextButton(
-                          onPressed: () => _showSignOutSheet(context),
+                          onPressed: () => _showSignOutSheet(context, ref),
                           child: const Text(
                             'Sign out',
                             style: TextStyle(color: AppTheme.glucoseLow, fontWeight: FontWeight.bold),
@@ -149,7 +150,7 @@ class ProfileScreen extends ConsumerWidget {
         const Expanded(
           child: StatTile(
             label: 'Streak',
-            value: '12',
+            value: '0',
             unit: '🔥',
             textColor: AppTheme.accentOrange,
           ),
@@ -218,7 +219,7 @@ class ProfileScreen extends ConsumerWidget {
           ] else ...[
             ProfileRow(
               title: 'Personal stats',
-              trailing: Text('182cm, 78kg', style: AppTheme.labelSmall),
+              trailing: Text(_formatStats(user), style: AppTheme.labelSmall),
               onTap: () => context.push('/profile/stats-edit'),
             ),
             const Divider(height: 1),
@@ -318,6 +319,8 @@ class ProfileScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const ProfileSectionHeader(title: 'Settings'),
+          ProfileRow(title: 'Account & security', onTap: () => context.push('/profile/account')),
+          const Divider(height: 1),
           ProfileRow(title: 'Notifications', onTap: () => context.push('/profile/notifications')),
           const Divider(height: 1),
           ProfileRow(title: 'Units', onTap: () => context.push('/profile/units')),
@@ -332,16 +335,23 @@ class ProfileScreen extends ConsumerWidget {
     );
   }
 
+  String _formatStats(UserProfile user) {
+    final parts = <String>[];
+    if (user.heightCm != null && user.heightCm! > 0) parts.add('${user.heightCm!.toInt()}cm');
+    if (user.startingWeight > 0) parts.add('${user.startingWeight.toInt()}kg');
+    return parts.isEmpty ? '--' : parts.join(', ');
+  }
+
   void _handleAvatarTap(BuildContext context, WidgetRef ref) {
     debugPrint('Upload avatar tapped');
   }
 
-  void _showSignOutSheet(BuildContext context) {
+  void _showSignOutSheet(BuildContext context, WidgetRef ref) {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.white,
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => Padding(
+      builder: (ctx) => Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -351,12 +361,15 @@ class ProfileScreen extends ConsumerWidget {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: () => context.go('/onboarding/intro'),
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await ref.read(authProvider.notifier).logout();
+                },
                 style: ElevatedButton.styleFrom(backgroundColor: AppTheme.glucoseLow, foregroundColor: Colors.white),
                 child: const Text('Sign out'),
               ),
             ),
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancel')),
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
           ],
         ),
       ),

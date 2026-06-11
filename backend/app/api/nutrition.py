@@ -218,7 +218,7 @@ async def log_meal(
         enriched.total_calories,
     )
 
-    return LogMealResponse(
+    return SaveMealResponse(
         meal_id=str(meal_log.id),
         food_name=request.food_name,
         portion_grams=request.portion_grams,

@@ -48,7 +48,7 @@ class ManualGlucoseNotifier extends Notifier<ManualGlucoseState> {
     state = const ManualGlucoseState(isSaving: true);
     try {
       await _dio.post(
-        '/api/v1/glucose/manual',
+        '/glucose/manual',
         data: {
           'user_id':    userId,
           'value_mgdl': valueMgdl,

@@ -1,10 +1,11 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:lucide_icons/lucide_icons.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../core/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
-import '../../../../core/services/auth_storage_service.dart';
 import '../../../auth/providers/auth_provider.dart';
 import '../../onboarding_provider.dart';
 import '../widgets/onboarding_layout.dart';
@@ -13,36 +14,64 @@ class AcknowledgementScreen extends ConsumerStatefulWidget {
   const AcknowledgementScreen({super.key});
 
   @override
-  ConsumerState<AcknowledgementScreen> createState() => _AcknowledgementScreenState();
+  ConsumerState<AcknowledgementScreen> createState() =>
+      _AcknowledgementScreenState();
 }
+
+// Public legal pages linked from the acceptance checkbox.
+const _kTermsUrl = 'https://mytr.ai/terms';
+const _kPrivacyUrl = 'https://mytr.ai/privacy';
 
 class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
   bool _medicalDisclaimerChecked = false;
   bool _researchConsentChecked = true;
+  bool _termsAccepted = false;
   bool _isSubmitting = false;
+
+  Future<void> _openUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open $url')),
+        );
+      }
+    }
+  }
 
   Future<void> _submitAndNavigate() async {
     setState(() => _isSubmitting = true);
-    
-    // Save the final state
-    ref.read(onboardingProvider.notifier).setConsent(_medicalDisclaimerChecked, _researchConsentChecked);
-    
-    // Call the backend
-    final response = await ref.read(onboardingProvider.notifier).submit();
-    
-    if (context.mounted) {
+
+    ref.read(onboardingProvider.notifier).setConsent(
+      _medicalDisclaimerChecked,
+      _researchConsentChecked,
+      termsAccepted: _termsAccepted,
+    );
+
+    try {
+      final response = await ref.read(onboardingProvider.notifier).submit();
+
+      if (!mounted) return;
       setState(() => _isSubmitting = false);
+
       if (response != null && response['access_token'] != null) {
         await ref.read(authProvider.notifier).completeOnboarding(
-          response['access_token'],
-          response['refresh_token'] ?? '',
+          response['access_token'] as String,
+          (response['refresh_token'] as String?) ?? '',
         );
-        context.go('/home');
+        // Prompt email verification right after signup (skippable).
+        if (mounted) context.go('/auth/verify-email');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Something went wrong — please try again.')),
         );
       }
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
+      );
     }
   }
 
@@ -61,7 +90,9 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
         text: 'I Agree — Start Mytr.AI →',
         variant: ButtonVariant.primary,
         isLoading: _isSubmitting,
-        onPressed: _medicalDisclaimerChecked ? _submitAndNavigate : null,
+        onPressed: (_medicalDisclaimerChecked && _termsAccepted)
+            ? _submitAndNavigate
+            : null,
       ),
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -73,7 +104,8 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
             iconWidget: const Text('⚕️', style: TextStyle(fontSize: 12)),
             title: 'Medical disclaimer',
             titleColor: AppColors.nearBlack,
-            body: 'Mytr.AI provides personalised guidance to support — not replace — advice from your doctor or endocrinologist. Always consult your healthcare provider before adjusting insulin doses.',
+            body:
+                'Mytr.AI provides personalised guidance to support — not replace — advice from your doctor or endocrinologist. Always consult your healthcare provider before adjusting insulin doses.',
             bodyColor: const Color(0xFF888888),
           ),
           const SizedBox(height: 16),
@@ -81,12 +113,18 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
             bgColor: const Color(0xFFE8F8FF),
             borderColor: const Color(0xFF9DDBF0),
             iconBg: AppColors.cyan,
-            iconWidget: const Icon(LucideIcons.clipboardList, color: Colors.white, size: 12),
+            iconWidget: const Icon(
+              LucideIcons.clipboardList,
+              color: Colors.white,
+              size: 12,
+            ),
             title: 'Helping build India\'s insulin pump',
             titleColor: const Color(0xFF006A8A),
-            body: 'We are developing an affordable indigenous insulin pump for India. With your consent, non-sensitive, anonymised usage patterns from this app — such as lifestyle correlations and glucose trends — may be used to improve pump dosing algorithms.',
+            body:
+                'We are developing an affordable indigenous insulin pump for India. With your consent, non-sensitive, anonymised usage patterns from this app — such as lifestyle correlations and glucose trends — may be used to improve pump dosing algorithms.',
             bodyColor: const Color(0xFF007AA0),
-            footer: '✓ No personal identifiers ever shared\n·  ✓ Fully anonymised  ·  ✓ Opt out anytime',
+            footer:
+                '✓ No personal identifiers ever shared\n·  ✓ Fully anonymised  ·  ✓ Opt out anytime',
             footerColor: const Color(0xFF009BBF),
           ),
           const SizedBox(height: 16),
@@ -97,27 +135,104 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
             iconWidget: const Text('🔒', style: TextStyle(fontSize: 12)),
             title: 'Your data is yours',
             titleColor: AppColors.nearBlack,
-            body: 'All health data is stored securely on Indian servers in compliance with DPDPA 2023. You can export or delete your data at any time from Profile settings.',
+            body:
+                'All health data is stored securely on Indian servers in compliance with DPDPA 2023. You can export or delete your data at any time from Profile settings.',
             bodyColor: const Color(0xFF888888),
           ),
-          
+
           const SizedBox(height: 32),
-          
+
           _buildCheckboxRow(
             checked: _medicalDisclaimerChecked,
             activeColor: AppColors.nearBlack,
-            text: 'I understand Mytr.AI supports but does not replace medical advice.',
-            onTap: () => setState(() => _medicalDisclaimerChecked = !_medicalDisclaimerChecked),
+            text:
+                'I understand Mytr.AI supports but does not replace medical advice.',
+            onTap: () => setState(
+              () => _medicalDisclaimerChecked = !_medicalDisclaimerChecked,
+            ),
           ),
           const SizedBox(height: 16),
           _buildCheckboxRow(
             checked: _researchConsentChecked,
             activeColor: AppColors.cyan,
-            text: 'I consent to anonymised usage data being used for insulin pump research.',
-            onTap: () => setState(() => _researchConsentChecked = !_researchConsentChecked),
+            text:
+                'I consent to anonymised usage data being used for insulin pump research.',
+            onTap: () => setState(
+              () => _researchConsentChecked = !_researchConsentChecked,
+            ),
           ),
+          const SizedBox(height: 16),
+          _buildTermsRow(),
         ],
       ),
+    );
+  }
+
+  /// Acceptance checkbox with tappable Terms of Service / Privacy Policy links.
+  Widget _buildTermsRow() {
+    final linkStyle = const TextStyle(
+      color: AppColors.cyan,
+      fontSize: 10,
+      fontWeight: FontWeight.w700,
+      height: 1.4,
+      decoration: TextDecoration.underline,
+    );
+    const baseStyle = TextStyle(
+      color: AppColors.nearBlack,
+      fontSize: 10,
+      fontWeight: FontWeight.w600,
+      height: 1.4,
+    );
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _termsAccepted = !_termsAccepted),
+          child: Container(
+            width: 20,
+            height: 20,
+            margin: const EdgeInsets.only(top: 2, right: 12),
+            decoration: BoxDecoration(
+              color: _termsAccepted ? AppColors.nearBlack : Colors.transparent,
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(
+                color: _termsAccepted ? AppColors.nearBlack : AppColors.borderLight,
+                width: 1.5,
+              ),
+            ),
+            child: _termsAccepted
+                ? const Center(
+                    child: Icon(LucideIcons.check, color: Colors.white, size: 14),
+                  )
+                : null,
+          ),
+        ),
+        Expanded(
+          child: RichText(
+            text: TextSpan(
+              style: baseStyle,
+              children: [
+                const TextSpan(text: 'I agree to the '),
+                TextSpan(
+                  text: 'Terms of Service',
+                  style: linkStyle,
+                  recognizer: TapGestureRecognizer()
+                    ..onTap = () => _openUrl(_kTermsUrl),
+                ),
+                const TextSpan(text: ' and '),
+                TextSpan(
+                  text: 'Privacy Policy',
+                  style: linkStyle,
+                  recognizer: TapGestureRecognizer()
+                    ..onTap = () => _openUrl(_kPrivacyUrl),
+                ),
+                const TextSpan(text: '.'),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -168,11 +283,7 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
           const SizedBox(height: 10),
           Text(
             body,
-            style: TextStyle(
-              color: bodyColor,
-              fontSize: 8.5,
-              height: 1.5,
-            ),
+            style: TextStyle(color: bodyColor, fontSize: 8.5, height: 1.5),
           ),
           if (footer != null) ...[
             const SizedBox(height: 12),
@@ -185,7 +296,7 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
                 height: 1.4,
               ),
             ),
-          ]
+          ],
         ],
       ),
     );
@@ -216,7 +327,11 @@ class _AcknowledgementScreenState extends ConsumerState<AcknowledgementScreen> {
             ),
             child: checked
                 ? const Center(
-                    child: Icon(LucideIcons.check, color: Colors.white, size: 14),
+                    child: Icon(
+                      LucideIcons.check,
+                      color: Colors.white,
+                      size: 14,
+                    ),
                   )
                 : null,
           ),

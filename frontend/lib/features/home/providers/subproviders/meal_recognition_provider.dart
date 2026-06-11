@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../../core/network/dio_provider.dart';
+import '../../../../core/api/api_client.dart';
 import '../../models/models.dart';
 import '../../../nutrition/models/food_models.dart';
 import '../../../nutrition/services/meal_recognition_service.dart';
@@ -49,7 +49,7 @@ class MealRecognitionNotifier
     state = const AsyncLoading();
 
     try {
-      final service = FoodRecognitionService(ref.read(dioProvider));
+      final service = FoodRecognitionService(ref.read(apiClientProvider));
 
       // 1. Gemini Vision: get food items + estimated portions
       final foodItems = await service.analyzeImage(imageFile);

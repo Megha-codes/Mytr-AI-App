@@ -9,16 +9,19 @@ export '../models/models.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
+import '../../profile/providers/user_profile_provider.dart';
 import 'subproviders/dashboard_provider.dart';
 
 // ── InsulinProvider ──────────────────────────────────────────────────────────
+// No bolus data source is wired yet, so totals are zero until insulin logging
+// (or pump sync) exists. No fabricated values.
 class InsulinState {
   final double totalBolusToday;
   final double adjustmentPercent;
   final double lastBolusAmount;
-  
+
   InsulinState({
-    required this.totalBolusToday, 
+    required this.totalBolusToday,
     required this.adjustmentPercent,
     required this.lastBolusAmount,
   });
@@ -26,68 +29,74 @@ class InsulinState {
 
 final insulinProvider = Provider<InsulinState>((ref) {
   return InsulinState(
-    totalBolusToday: 12.4, 
-    adjustmentPercent: -15.0,
-    lastBolusAmount: 4.5,
+    totalBolusToday: 0,
+    adjustmentPercent: 0,
+    lastBolusAmount: 0,
   );
 });
 
 // ── SleepProvider ────────────────────────────────────────────────────────────
+// Sleep requires a connected wearable/Health source. Until one is connected,
+// `hasData` is false and the UI hides sleep cards instead of showing fake data.
 enum SleepQuality { poor, fair, good, excellent }
 
 class SleepState {
+  final bool hasData;
   final double lastNightHours;
   final SleepQuality quality;
   final List<SleepStage> stages;
 
   SleepState({
-    required this.lastNightHours, 
-    required this.quality,
-    required this.stages,
+    this.hasData = false,
+    this.lastNightHours = 0,
+    this.quality = SleepQuality.fair,
+    this.stages = const [],
   });
 }
 
 final sleepProvider = Provider<SleepState>((ref) {
-  return SleepState(
-    lastNightHours: 7.2, 
-    quality: SleepQuality.good,
-    stages: [
-      SleepStage(type: SleepStageType.awake, hours: 0.5),
-      SleepStage(type: SleepStageType.light, hours: 3.5),
-      SleepStage(type: SleepStageType.deep, hours: 1.5),
-      SleepStage(type: SleepStageType.rem, hours: 1.7),
-    ],
-  );
+  // No wearable/Health Connect sync implemented yet → no sleep data.
+  return SleepState(hasData: false);
 });
 
 // ── WeightProvider ───────────────────────────────────────────────────────────
+// Current weight comes from the real profile the user entered at onboarding.
+// Weekly change stays 0 until weight logging history exists.
 enum WeightUnit { kg, lbs }
 enum ChangeDirection { up, down, stable }
 
 class WeightState {
+  final bool hasData;
   final double currentWeight;
   final WeightUnit unit;
   final double weeklyChange;
   final ChangeDirection weeklyChangeDirection;
 
   WeightState({
-    required this.currentWeight,
-    required this.unit,
-    required this.weeklyChange,
-    required this.weeklyChangeDirection,
+    this.hasData = false,
+    this.currentWeight = 0,
+    this.unit = WeightUnit.kg,
+    this.weeklyChange = 0,
+    this.weeklyChangeDirection = ChangeDirection.stable,
   });
 }
 
 final weightProvider = Provider<WeightState>((ref) {
+  final profile = ref.watch(userProfileProvider).valueOrNull;
+  final w = profile?.startingWeight ?? 0;
+  if (w <= 0) return WeightState(hasData: false);
   return WeightState(
-    currentWeight: 78.4,
+    hasData: true,
+    currentWeight: w,
     unit: WeightUnit.kg,
-    weeklyChange: 0.8,
-    weeklyChangeDirection: ChangeDirection.down,
+    weeklyChange: 0,
+    weeklyChangeDirection: ChangeDirection.stable,
   );
 });
 
 // ── DeviceProvider ───────────────────────────────────────────────────────────
+// No device pairing flow is wired yet, so nothing is reported as connected.
+// The UI shows honest "connect a device" prompts instead of fake devices.
 class WearableDevice {
   final String name;
   final String type;
@@ -100,21 +109,11 @@ class DeviceState {
   final CGMDevice? connectedCGM;
   final List<WearableDevice> connectedWearables;
 
-  DeviceState({this.connectedCGM, required this.connectedWearables});
+  DeviceState({this.connectedCGM, this.connectedWearables = const []});
 }
 
 final deviceProvider = Provider<DeviceState>((ref) {
-  return DeviceState(
-    connectedCGM: CGMDevice(
-      id: 'cgm_1',
-      name: 'Dexcom G7',
-      status: SensorStatus.active,
-      daysRemaining: 3,
-    ),
-    connectedWearables: [
-      WearableDevice(name: 'Apple Watch', type: 'WATCH', lastSync: DateTime.now().subtract(const Duration(minutes: 5))),
-    ],
-  );
+  return DeviceState(connectedCGM: null, connectedWearables: const []);
 });
 
 // ── ChallengesProvider ────────────────────────────────────────────────────────

@@ -5,7 +5,6 @@ import '../../models/cgm_connection_state.dart';
 import '../../providers/cgm_connection_provider.dart';
 import 'cgm_error_card.dart';
 import 'cgm_connected_card.dart';
-import 'dexcom_prereq_checklist.dart';
 
 class DeviceConnectionWidget extends ConsumerStatefulWidget {
   final String deviceType;
@@ -72,9 +71,7 @@ class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget>
   }
 
   Widget _buildPreConnectionUI(CgmConnectionState state) {
-    if (widget.deviceType.startsWith('DEXCOM')) {
-      return const DexcomPrereqChecklist();
-    } else if (widget.deviceType.startsWith('LIBRE')) {
+    if (widget.deviceType.startsWith('LIBRE')) {
       return _buildLibreForm();
     }
     return const SizedBox.shrink();
@@ -107,9 +104,7 @@ class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget>
   }
 
   String _getButtonText() {
-    if (widget.deviceType.startsWith('DEXCOM')) {
-      return 'Connect with Dexcom →';
-    } else if (widget.deviceType.startsWith('LIBRE')) {
+    if (widget.deviceType.startsWith('LIBRE')) {
       return 'Verify Credentials →';
     } else if (widget.deviceType == 'MANUAL') {
       return 'Set up Manual Entry';
@@ -119,9 +114,7 @@ class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget>
 
   void _handleConnect() {
     final notifier = ref.read(cgmConnectionProvider.notifier);
-    if (widget.deviceType.startsWith('DEXCOM')) {
-      notifier.connectDexcom();
-    } else if (widget.deviceType.startsWith('LIBRE')) {
+    if (widget.deviceType.startsWith('LIBRE')) {
       // In a real app, we'd pass email/password from the form
       notifier.connectLibre('user@example.com', 'password123');
     } else if (widget.deviceType == 'MANUAL') {

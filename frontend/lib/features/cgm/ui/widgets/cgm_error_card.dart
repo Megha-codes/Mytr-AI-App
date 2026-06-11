@@ -10,9 +10,6 @@ class CgmErrorCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Some errors don't need a card (e.g. cancelled)
-    if (error == CgmConnectError.dexcomAuthCancelled) return const SizedBox.shrink();
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(

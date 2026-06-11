@@ -37,7 +37,7 @@ class ManageDevicesScreen extends ConsumerWidget {
                       _buildSectionTitle('GLUCOSE MONITOR'),
                       const SizedBox(height: 16),
                       // Using the reusable widget
-                      const DeviceConnectionWidget(deviceType: 'DEXCOM'),
+                      const DeviceConnectionWidget(deviceType: 'LIBRE'),
                       
                       const SizedBox(height: 32),
                       _buildSectionTitle('WEARABLES'),

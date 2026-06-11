@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/dio_provider.dart';
+import '../../../core/api/api_client.dart';
 import '../models/food_models.dart';
 import '../services/meal_recognition_service.dart';
 
@@ -20,7 +20,7 @@ class FoodImageNotifier extends AutoDisposeAsyncNotifier<List<FoodItem>> {
     state = const AsyncLoading();
 
     try {
-      final service = FoodRecognitionService(ref.read(dioProvider));
+      final service = FoodRecognitionService(ref.read(apiClientProvider));
       final items = await service.analyzeImage(imageFile);
       state = AsyncData(items);
     } catch (e, st) {

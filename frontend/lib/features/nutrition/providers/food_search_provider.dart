@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/network/dio_provider.dart';
+import '../../../core/api/api_client.dart';
 import '../models/food_models.dart';
 import '../services/meal_recognition_service.dart';
 
@@ -33,7 +33,7 @@ class FoodSearchNotifier extends AutoDisposeAsyncNotifier<List<NutritionData>> {
     state = const AsyncLoading();
 
     try {
-      final service = FoodRecognitionService(ref.read(dioProvider));
+      final service = FoodRecognitionService(ref.read(apiClientProvider));
       final results = await service.searchFood(query);
       state = AsyncData(results);
     } catch (e, st) {

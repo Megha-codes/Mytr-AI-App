@@ -3,7 +3,7 @@ import 'package:dio_smart_retry/dio_smart_retry.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/auth_storage_service.dart';
-import '../config/environment.dart';
+import '../config.dart';
 
 final apiClientProvider = Provider((ref) {
   return ApiClient();
@@ -16,7 +16,7 @@ class ApiClient {
   ApiClient() {
     _dio = Dio(
       BaseOptions(
-        baseUrl: Environment.apiBaseUrl,
+        baseUrl: AppConfig.apiBaseUrl,
         connectTimeout: const Duration(seconds: 15),
         receiveTimeout: const Duration(seconds: 15),
         headers: {
@@ -26,13 +26,16 @@ class ApiClient {
       ),
     );
 
-    // ── Auth Interceptor ───────────────────────────────────────────────────
     _dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await _storage.getAccessToken();
-          if (token != null) {
-            options.headers['Authorization'] = 'Bearer $token';
+          try {
+            final token = await _storage.getAccessToken();
+            if (token != null) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
+          } catch (_) {
+            // Corrupted secure storage — proceed without token
           }
           return handler.next(options);
         },
@@ -43,11 +46,18 @@ class ApiClient {
     _dio.interceptors.add(
       QueuedInterceptorsWrapper(
         onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401) {
-            // Attempt to refresh token
+          // Only attempt a refresh-and-retry for 401s on protected endpoints.
+          // The auth endpoints themselves must be excluded:
+          //   • /auth/login   — a 401 means wrong credentials, not an expired token.
+          //   • /auth/refresh — refreshing on a failed refresh would loop forever.
+          // Anything under /auth/ (forgot/reset password etc.) is also excluded.
+          final path = e.requestOptions.path;
+          final isAuthEndpoint = path.contains('/auth/');
+
+          if (e.response?.statusCode == 401 && !isAuthEndpoint) {
             final success = await _refreshToken();
             if (success) {
-              // Retry the original request
+              // Retry the original request with the new access token.
               final token = await _storage.getAccessToken();
               e.requestOptions.headers['Authorization'] = 'Bearer $token';
               final cloneReq = await _dio.request(
@@ -60,11 +70,11 @@ class ApiClient {
                 queryParameters: e.requestOptions.queryParameters,
               );
               return handler.resolve(cloneReq);
-            } else {
-              // Refresh failed, logout and bubble error
-              // This will be caught by the app-level logic to redirect to login
-              return handler.next(e);
             }
+            // Refresh failed — the session is dead. Clear tokens so the app
+            // falls back to the unauthenticated state and redirects to login.
+            await _storage.clearAll();
+            return handler.next(e);
           }
           return handler.next(e);
         },
@@ -103,7 +113,10 @@ class ApiClient {
     if (refreshToken == null) return false;
 
     try {
-      final response = await _dio.post('/auth/refresh', data: {'refresh_token': refreshToken});
+      final response = await _dio.post(
+        '/auth/refresh',
+        data: {'refresh_token': refreshToken},
+      );
       if (response.statusCode == 200) {
         await _storage.saveTokens(
           access: response.data['access_token'],
@@ -118,19 +131,27 @@ class ApiClient {
   }
 
   // ── Convenience Methods ─────────────────────────────────────────────────
-  Future<Response<T>> get<T>(String path, {Map<String, dynamic>? queryParameters}) {
+  Future<Response<T>> get<T>(
+    String path, {
+    Map<String, dynamic>? queryParameters,
+  }) {
     return _dio.get<T>(path, queryParameters: queryParameters);
   }
 
-  Future<Response<T>> post<T>(String path, {dynamic data}) {
-    return _dio.post<T>(path, data: data);
+  Future<Response<T>> post<T>(
+    String path, {
+    dynamic data,
+    Map<String, dynamic>? queryParameters,
+    Options? options,
+  }) {
+    return _dio.post<T>(path, data: data, queryParameters: queryParameters, options: options);
   }
 
-  Future<Response<T>> put<T>(String path, {dynamic data}) {
-    return _dio.put<T>(path, data: data);
+  Future<Response<T>> put<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) {
+    return _dio.put<T>(path, data: data, queryParameters: queryParameters);
   }
 
-  Future<Response<T>> delete<T>(String path) {
-    return _dio.delete<T>(path);
+  Future<Response<T>> delete<T>(String path, {dynamic data, Map<String, dynamic>? queryParameters}) {
+    return _dio.delete<T>(path, data: data, queryParameters: queryParameters);
   }
 }

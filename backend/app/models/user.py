@@ -10,6 +10,7 @@ class User(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     email = Column(String, unique=True, nullable=False)
     password_hash = Column(String, nullable=False)
+    email_verified = Column(Boolean, nullable=False, server_default=text("false"))
     name = Column(String)
     dob = Column(Date)
     gender = Column(String)
@@ -18,6 +19,12 @@ class User(Base):
     diabetes_type = Column(String) # 'T1', 'T2', 'PRE'
     created_at = Column(DateTime, server_default=text("now()"))
     consent_confirmed_at = Column(DateTime)
+    # Records explicit acceptance of the Terms of Service & Privacy Policy.
+    terms_accepted_at = Column(DateTime)
+    # Bumped to invalidate every previously-issued token for this user
+    # (used by "log out of all devices", password change, and account deletion).
+    # Access/refresh tokens carry a `tv` claim that must match this value.
+    token_version = Column(Integer, nullable=False, server_default=text("0"))
 
     insulin_profiles = relationship("InsulinProfile", back_populates="user")
     cgm_devices = relationship("CGMDevice", back_populates="user")
@@ -46,7 +53,7 @@ class CGMDevice(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
-    device_type = Column(String)        # 'DEXCOM_G6', 'LIBRE_2', etc.
+    device_type = Column(String)        # 'LIBRE_2', 'LIBRE_3', 'MANUAL'
     is_active = Column(Boolean, server_default=text("true"))
     is_continuous = Column(Boolean, server_default=text("true"))   # False for BGMs
     supports_trend = Column(Boolean, server_default=text("true"))  # False for BGMs
@@ -59,6 +66,16 @@ class CGMDevice(Base):
     last_sync_at = Column(DateTime)
 
     user = relationship("User", back_populates="cgm_devices")
+
+class LoginAttempt(Base):
+    """One row per login attempt, used for persistent per-account lockout."""
+    __tablename__ = "login_attempts"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
+    email = Column(String, nullable=False, index=True)
+    ip = Column(String)
+    successful = Column(Boolean, nullable=False)
+    created_at = Column(DateTime, nullable=False)
 
 class WearableDevice(Base):
     __tablename__ = "wearable_devices"

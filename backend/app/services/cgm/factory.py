@@ -25,15 +25,12 @@ class BaseCGMService:
         raise NotImplementedError()
 
 
-from .dexcom_service import DexcomCGMService
 from .libre_service import LibreCGMService
 from .manual_service import ManualGlucoseService
 
 
 def cgm_service_factory(device_type: str) -> BaseCGMService:
     services: dict[str, BaseCGMService] = {
-        "DEXCOM_G6": DexcomCGMService(),
-        "DEXCOM_G7": DexcomCGMService(),
         "LIBRE_2":   LibreCGMService(),
         "LIBRE_3":   LibreCGMService(),
         "MANUAL":    ManualGlucoseService(),

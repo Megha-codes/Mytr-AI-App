@@ -18,6 +18,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
+  bool _rememberMe = false;
 
   final _passwordFocusNode = FocusNode();
   String? _errorMessage;
@@ -47,7 +48,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  static final _emailRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
   Future<void> _login() async {
+    final email = _emailController.text.trim();
+    if (!_emailRegex.hasMatch(email)) {
+      setState(() => _errorMessage = 'Please enter a valid email address.');
+      return;
+    }
+    if (_passwordController.text.isEmpty) {
+      setState(() => _errorMessage = 'Please enter your password.');
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -57,11 +70,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       await ref.read(authProvider.notifier).login(
         _emailController.text.trim(),
         _passwordController.text,
+        rememberMe: _rememberMe,
       );
+      // Navigate explicitly rather than relying solely on the router redirect.
+      if (mounted) context.go('/home');
     } on DioException catch (e) {
       if (!mounted) return;
       if (e.response?.statusCode == 401) {
         setState(() => _errorMessage = 'Incorrect email or password');
+      } else if (e.response?.statusCode == 423) {
+        final detail = e.response?.data is Map ? e.response?.data['detail'] as String? : null;
+        setState(() => _errorMessage = detail ??
+            'Account temporarily locked after too many failed attempts. Reset your password to unlock it.');
+      } else if (e.response?.statusCode == 429) {
+        setState(() => _errorMessage = 'Too many attempts. Please wait a minute and try again.');
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Connection failed. Check your internet.')),
@@ -113,17 +135,40 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ],
 
               const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: GestureDetector(
-                  onTap: () {
-                    // TODO: Implement forgot password
-                  },
-                  child: Text(
-                    'Forgot password?',
-                    style: TextStyle(color: AppTheme.brandGreen, fontWeight: FontWeight.bold, fontSize: 13),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  GestureDetector(
+                    onTap: () => setState(() => _rememberMe = !_rememberMe),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: Checkbox(
+                            value: _rememberMe,
+                            onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                            activeColor: AppTheme.brandGreen,
+                            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Remember me',
+                          style: AppTheme.labelSmall.copyWith(color: AppTheme.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                  GestureDetector(
+                    onTap: () => context.push('/auth/forgot-password'),
+                    child: Text(
+                      'Forgot password?',
+                      style: TextStyle(color: AppTheme.brandGreen, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 32),
               

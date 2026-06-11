@@ -10,6 +10,7 @@ import '../../../../core/widgets/weekly_bar_chart.dart';
 import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
 import '../../providers/providers.dart';
+import '../../../profile/providers/goals_provider.dart';
 import '../widgets/activity_widgets.dart';
 
 class ActivityScreen extends ConsumerWidget {
@@ -20,6 +21,7 @@ class ActivityScreen extends ConsumerWidget {
     final activityAsync = ref.watch(activityProvider);
     final sleep = ref.watch(sleepProvider);
     final deviceState = ref.watch(deviceProvider);
+    final stepGoal = (ref.watch(goalsProvider).valueOrNull ?? const Goals()).dailyStepGoal;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundCream,
@@ -31,7 +33,7 @@ class ActivityScreen extends ConsumerWidget {
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: activityAsync.when(
-            data: (activity) => _buildContent(context, activity, sleep, deviceState),
+            data: (activity) => _buildContent(context, activity, sleep, deviceState, stepGoal),
             loading: () => const _ActivityLoadingView(),
             error: (e, _) => Center(
               child: InlineErrorCard(
@@ -45,8 +47,8 @@ class ActivityScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, DeviceState deviceState) {
-    final stepsPercent = (activity.stepsToday / activity.stepTarget).clamp(0, 1).toDouble();
+  Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, DeviceState deviceState, int stepGoal) {
+    final stepsPercent = stepGoal == 0 ? 0.0 : (activity.stepsToday / stepGoal).clamp(0, 1).toDouble();
 
     return Column(
       children: [
@@ -62,7 +64,7 @@ class ActivityScreen extends ConsumerWidget {
             offset: const Offset(0, -20),
             child: StepsStrip(
               steps: activity.stepsToday,
-              goal: activity.stepTarget,
+              goal: stepGoal,
               percent: stepsPercent,
             ),
           ),
@@ -121,7 +123,7 @@ class ActivityScreen extends ConsumerWidget {
                       )).toList(),
                       activeColor: AppTheme.brandGreen,
                       inactiveColor: AppTheme.borderLight,
-                      goalLine: activity.stepTarget.toDouble(),
+                      goalLine: stepGoal.toDouble(),
                     ),
                   ],
                 ),
@@ -129,24 +131,25 @@ class ActivityScreen extends ConsumerWidget {
 
               const SizedBox(height: 16),
 
-              AppCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text('Sleep last night', style: AppTheme.titleLarge),
-                        Text('${sleep.lastNightHours}h', style: AppTheme.displayMedium.copyWith(color: AppTheme.textPrimary)),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    SleepStageBar(stages: sleep.stages),
-                  ],
+              if (sleep.hasData)
+                AppCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Sleep last night', style: AppTheme.titleLarge),
+                          Text('${sleep.lastNightHours}h', style: AppTheme.displayMedium.copyWith(color: AppTheme.textPrimary)),
+                        ],
+                      ),
+                      const SizedBox(height: 24),
+                      SleepStageBar(stages: sleep.stages),
+                    ],
+                  ),
                 ),
-              ),
 
-              const SizedBox(height: 16),
+              if (sleep.hasData) const SizedBox(height: 16),
 
               if (deviceState.connectedWearables.isNotEmpty)
                 _SyncPill(device: deviceState.connectedWearables.first)

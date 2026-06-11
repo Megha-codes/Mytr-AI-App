@@ -1,33 +1,8 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from datetime import datetime, timedelta
-import uuid
+from datetime import datetime
 
 app = FastAPI(title="Mock CGM Server")
-
-# ── Dexcom Mock ──────────────────────────────────────────────────────────────
-
-@app.post("/v2/oauth2/token")
-async def dexcom_token(grant_type: str, code: str, client_id: str, client_secret: str):
-    if code == "valid_code":
-        return {
-            "access_token": "mock_access_token",
-            "refresh_token": "mock_refresh_token",
-            "expires_in": 3600
-        }
-    raise HTTPException(status_code=400, detail="Invalid code")
-
-@app.get("/v3/users/self/egvs")
-async def dexcom_egvs():
-    return {
-        "recordId": str(uuid.uuid4()),
-        "systemTime": datetime.utcnow().isoformat(),
-        "displayTime": datetime.utcnow().isoformat(),
-        "value": 125,
-        "status": "OK",
-        "trend": "flat",
-        "trendRate": 0.0
-    }
 
 # ── Libre Mock ───────────────────────────────────────────────────────────────
 

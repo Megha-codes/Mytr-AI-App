@@ -84,6 +84,7 @@ async def get_user_profile(
         "level_title": _level_title(level),
         "current_xp": xp_in_level,
         "xp_to_next_level": 300,
+        "height_cm": float(current_user.height_cm) if current_user.height_cm else None,
         "starting_weight": float(current_user.weight_kg) if current_user.weight_kg else None,
         "weight_goal": None,
         "primary_goal": primary_goal,

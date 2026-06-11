@@ -8,6 +8,7 @@ import '../../../../core/widgets/progress_widgets.dart';
 import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
 import '../../providers/providers.dart';
+import '../../../profile/providers/goals_provider.dart';
 
 class DiabeticBodyContent extends ConsumerWidget {
   const DiabeticBodyContent({super.key});
@@ -77,12 +78,15 @@ class FitnessBodyContent extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final nutritionAsync = ref.watch(nutritionProvider);
-    final sleep = ref.watch(sleepProvider);
     final weight = ref.watch(weightProvider);
     final challenges = ref.watch(challengesProvider);
+    final goals = ref.watch(goalsProvider).valueOrNull ?? const Goals();
 
     return nutritionAsync.when(
-      data: (nutrition) => Column(
+      data: (nutrition) {
+        final calorieTarget = goals.dailyCalorieGoal;
+        final caloriesRemaining = (calorieTarget - nutrition.caloriesEaten);
+        return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AppCard(
@@ -96,15 +100,15 @@ class FitnessBodyContent extends ConsumerWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('${nutrition.caloriesRemaining}', style: AppTheme.displayLarge.copyWith(color: Colors.white)),
+                    Text('$caloriesRemaining', style: AppTheme.displayLarge.copyWith(color: Colors.white)),
                     Text('REMAINING', style: AppTheme.labelLarge.copyWith(color: Colors.white)),
                   ],
                 ),
                 const SizedBox(height: 8),
-                Text('${nutrition.caloriesEaten} eaten of ${nutrition.calorieTarget}', style: AppTheme.bodySmall.copyWith(color: Colors.white)),
+                Text('${nutrition.caloriesEaten} eaten of $calorieTarget', style: AppTheme.bodySmall.copyWith(color: Colors.white)),
                 const SizedBox(height: 16),
                 LinearProgressIndicator(
-                  value: (nutrition.caloriesEaten / nutrition.calorieTarget).clamp(0, 1),
+                  value: calorieTarget == 0 ? 0 : (nutrition.caloriesEaten / calorieTarget).clamp(0, 1),
                   backgroundColor: Colors.white.withValues(alpha: 0.1),
                   valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
                   borderRadius: BorderRadius.circular(AppTheme.pillRadius),
@@ -117,36 +121,21 @@ class FitnessBodyContent extends ConsumerWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(
-                child: StatTile(
-                  label: 'Sleep',
-                  value: '${sleep.lastNightHours}',
-                  unit: 'h',
-                  backgroundColor: AppTheme.brandGreen,
-                  textColor: Colors.white,
-                  subtext: sleep.quality.name,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: StatTile(
-                  label: 'Weight',
-                  value: '${weight.currentWeight}',
-                  unit: weight.unit.name.toLowerCase(),
-                  backgroundColor: AppTheme.accentCyan,
-                  textColor: Colors.white,
-                  subtext: '${weight.weeklyChange} ${weight.weeklyChangeDirection.name.toLowerCase()}',
-                ),
-              ),
-            ],
-          ),
+          if (weight.hasData) ...[
+            const SizedBox(height: 24),
+            StatTile(
+              label: 'Current Weight',
+              value: weight.currentWeight.toStringAsFixed(1),
+              unit: weight.unit.name.toLowerCase(),
+              backgroundColor: AppTheme.accentCyan,
+              textColor: Colors.white,
+            ),
+          ],
           const SizedBox(height: 24),
           _ChallengesCard(challenges: challenges),
         ],
-      ),
+      );
+      },
       loading: () => const Column(
         children: [
           CardShimmer(height: 180),

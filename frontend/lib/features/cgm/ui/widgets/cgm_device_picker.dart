@@ -48,20 +48,6 @@ class _CgmDevicePickerState extends ConsumerState<CgmDevicePicker> {
           _SectionHeader('CONTINUOUS GLUCOSE MONITORS'),
           const SizedBox(height: 12),
           _DeviceRow(
-            id: 'dexcom',
-            isSelected: _selectedId == 'dexcom',
-            iconBg: AppColors.cyan,
-            iconWidget: const Icon(LucideIcons.target, color: Colors.white, size: 16),
-            title: 'Dexcom G6 / G7',
-            subtitle: 'OAuth — Most Secure',
-            isLoading: state.status == CgmConnectionStatus.connecting && _selectedId == 'dexcom',
-            onTap: () {
-              setState(() => _selectedId = 'dexcom');
-              context.push('/cgm/dexcom-connect', extra: widget.redirectTo);
-            },
-          ),
-          const SizedBox(height: 8),
-          _DeviceRow(
             id: 'libre',
             isSelected: _selectedId == 'libre',
             iconBg: const Color(0xFFE8F8FF),

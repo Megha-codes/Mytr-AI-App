@@ -47,11 +47,9 @@ class CgmConnectedInfo {
   }
 
   static CgmDeviceType _parseDeviceType(String? raw) => switch (raw) {
-    'DEXCOM_G6'  => CgmDeviceType.dexcomG6,
-    'DEXCOM_G7'  => CgmDeviceType.dexcomG7,
     'LIBRE_2'    => CgmDeviceType.libreTwo,
     'LIBRE_3'    => CgmDeviceType.libreThree,
     'MANUAL'     => CgmDeviceType.manual,
-    _            => CgmDeviceType.dexcomG7, // safe fallback
+    _            => CgmDeviceType.libreThree, // safe fallback
   };
 }

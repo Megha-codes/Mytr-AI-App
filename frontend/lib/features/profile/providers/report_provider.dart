@@ -33,7 +33,7 @@ class ReportNotifier extends AutoDisposeNotifier<ReportState> {
     state = state.copyWith(isGenerating: true, error: null);
     
     try {
-      final response = await ref.read(apiClientProvider).post('/api/v1/reports/generate');
+      final response = await ref.read(apiClientProvider).post('/reports/generate');
       final jobId = response.data['job_id'];
       state = state.copyWith(currentJobId: jobId);
       _startPolling(jobId);
@@ -46,7 +46,7 @@ class ReportNotifier extends AutoDisposeNotifier<ReportState> {
     _pollingTimer?.cancel();
     _pollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
       try {
-        final response = await ref.read(apiClientProvider).get('/api/v1/reports/$jobId/status');
+        final response = await ref.read(apiClientProvider).get('/reports/$jobId/status');
         final status = response.data['status'];
         
         if (status == 'COMPLETED') {

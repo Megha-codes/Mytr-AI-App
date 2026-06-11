@@ -50,6 +50,7 @@ class UserOnboardRequest(BaseModel):
     
     consent_confirmed_at: Optional[datetime] = None
     research_consent: Optional[bool] = True
+    terms_accepted: Optional[bool] = False
 
 class AuthResponse(BaseModel):
     access_token: str
@@ -72,4 +73,5 @@ class UserProfileResponse(BaseModel):
     user_type: Optional[str] = None
     diabetes_type: Optional[str] = None
     onboarding_complete: bool
+    email_verified: bool = False
 

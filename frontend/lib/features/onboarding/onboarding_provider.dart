@@ -153,6 +153,7 @@ class OnboardingState {
   final DeviceSetup? deviceSetup;
   final bool consentConfirmed;
   final bool researchConsent;
+  final bool termsAccepted;
 
   OnboardingState({
     this.userType,
@@ -162,6 +163,7 @@ class OnboardingState {
     this.deviceSetup,
     this.consentConfirmed = false,
     this.researchConsent = true,
+    this.termsAccepted = false,
   });
 
   OnboardingState copyWith({
@@ -172,6 +174,7 @@ class OnboardingState {
     DeviceSetup? deviceSetup,
     bool? consentConfirmed,
     bool? researchConsent,
+    bool? termsAccepted,
   }) {
     return OnboardingState(
       userType: userType ?? this.userType,
@@ -181,6 +184,7 @@ class OnboardingState {
       deviceSetup: deviceSetup ?? this.deviceSetup,
       consentConfirmed: consentConfirmed ?? this.consentConfirmed,
       researchConsent: researchConsent ?? this.researchConsent,
+      termsAccepted: termsAccepted ?? this.termsAccepted,
     );
   }
 }
@@ -215,57 +219,67 @@ class OnboardingNotifier extends Notifier<OnboardingState> {
     AuthStorageService().saveOnboardingStep(6);
   }
 
-  void setConsent(bool confirmed, bool researchConsent) {
+  void setConsent(bool confirmed, bool researchConsent, {bool termsAccepted = false}) {
     state = state.copyWith(
       consentConfirmed: confirmed,
       researchConsent: researchConsent,
+      termsAccepted: termsAccepted,
     );
     AuthStorageService().saveOnboardingStep(7);
   }
   
   Future<Map<String, dynamic>?> submit() async {
+    // Map UserType enum to the diabetes_type string the backend stores.
+    final diabetesType = switch (state.userType) {
+      UserType.t1      => 'T1',
+      UserType.t2      => 'T2',
+      UserType.fitness => null,
+      null             => null,
+    };
+
     final payload = {
-      "user_type": state.userType?.name.toUpperCase(),
-      "email": state.personalInfo?.email,
-      "password": state.personalInfo?.password,
-      "name": state.personalInfo?.fullName,
-      "dob": state.personalInfo?.dob?.toIso8601String().split('T')[0],
-      "gender": state.personalInfo?.gender,
-      "weight_kg": state.personalInfo?.weight,
-      "height_cm": state.personalInfo?.height,
+      // Identity
+      "user_type":   state.userType?.name.toUpperCase(),
+      "diabetes_type": diabetesType,
+      "email":       state.personalInfo?.email,
+      "password":    state.personalInfo?.password,
+      "name":        state.personalInfo?.fullName,
+      "dob":         state.personalInfo?.dob?.toIso8601String().split('T')[0],
+      "gender":      state.personalInfo?.gender,
+      "weight_kg":   state.personalInfo?.weight,
+      "height_cm":   state.personalInfo?.height,
       "primary_goal": state.personalInfo?.primaryGoal,
-      "insulin_profile": state.userType == UserType.fitness ? null : {
-        "icr": state.insulinProfile?.icr,
-        "isf": state.insulinProfile?.isf,
-        "basal_rate": state.insulinProfile?.basalRate,
+      // Insulin profile — flat fields matching UserOnboardRequest schema
+      if (state.userType != UserType.fitness) ...{
+        "icr":                state.insulinProfile?.icr,
+        "isf":                state.insulinProfile?.isf,
+        "basal_rate":         state.insulinProfile?.basalRate,
         "target_glucose_min": state.insulinProfile?.targetMin,
         "target_glucose_max": state.insulinProfile?.targetMax,
-        "insulin_type": state.insulinProfile?.insulinType,
-        "profile_complete": state.insulinProfile?.profileComplete,
+        "insulin_type":       state.insulinProfile?.insulinType,
       },
-      "lifestyle_baseline": {
-        "sleep_hrs": state.lifestyleBaseline?.sleepHrs,
-        "activity_level": state.lifestyleBaseline?.activityLevel,
-        "stress_level": state.lifestyleBaseline?.stressLevel,
-        "calorie_intake": state.lifestyleBaseline?.calorieIntake,
-      },
-      "device_setup": {
-        "cgm_device": state.deviceSetup?.cgmDevice,
-        "manual_entry": state.deviceSetup?.manualEntry,
-        "wearables": state.deviceSetup?.wearables ?? [],
-      },
+      // Lifestyle — flat fields (backend expects avg_sleep, not sleep_hrs)
+      "avg_sleep":      state.lifestyleBaseline?.sleepHrs,
+      "activity_level": state.lifestyleBaseline?.activityLevel,
+      "stress_level":   state.lifestyleBaseline?.stressLevel,
+      // Device
+      "cgm_device": state.deviceSetup?.cgmDevice,
+      // Consent
       "consent_confirmed_at": DateTime.now().toIso8601String(),
-      "research_consent": state.researchConsent,
+      "research_consent":     state.researchConsent,
+      "terms_accepted":       state.termsAccepted,
     };
-    
+
     try {
       final apiClient = ref.read(apiClientProvider);
       final response = await apiClient.post('/users/onboard', data: payload);
-      return response.data;
-    } catch (e) {
-      if (e is DioException && e.response?.statusCode == 409) {
+      return response.data as Map<String, dynamic>;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 409) {
         throw Exception("An account with this email already exists.");
       }
+      return null;
+    } catch (_) {
       return null;
     }
   }

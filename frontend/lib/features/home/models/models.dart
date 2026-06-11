@@ -39,6 +39,8 @@ class UserProfile {
   @HiveField(8) final double weightGoal;
   @HiveField(9) final String primaryGoal;
   @HiveField(10) final List<Achievement> recentAchievements;
+  // Not persisted to Hive — populated from API response only.
+  final double? heightCm;
 
   UserProfile({
     required this.displayName,
@@ -52,6 +54,7 @@ class UserProfile {
     required this.weightGoal,
     required this.primaryGoal,
     required this.recentAchievements,
+    this.heightCm,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) {
@@ -63,6 +66,7 @@ class UserProfile {
       levelTitle: json['level_title'] ?? 'Novice',
       currentXP: json['current_xp'] ?? 0,
       xpToNextLevel: json['xp_to_next_level'] ?? 1000,
+      heightCm: (json['height_cm'] as num?)?.toDouble(),
       startingWeight: (json['starting_weight'] as num?)?.toDouble() ?? 0.0,
       weightGoal: (json['weight_goal'] as num?)?.toDouble() ?? 0.0,
       primaryGoal: json['primary_goal'] ?? '',

@@ -87,18 +87,11 @@ class AchievementBadge extends StatelessWidget {
           child: Stack(
             children: [
               Center(
-                child: ColorFiltered(
-                  colorFilter: achievement.isUnlocked
-                      ? const ColorFilter.mode(Colors.transparent, BlendMode.multiply)
-                      : const ColorFilter.matrix([
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0.2126, 0.7152, 0.0722, 0, 0,
-                          0,      0,      0,      1, 0,
-                        ]),
-                  child: Text(
-                    achievement.icon,
-                    style: const TextStyle(fontSize: 32),
+                child: Text(
+                  _emojiFromName(achievement.icon),
+                  style: TextStyle(
+                    fontSize: 32,
+                    color: achievement.isUnlocked ? null : Colors.grey[400],
                   ),
                 ),
               ),
@@ -121,6 +114,20 @@ class AchievementBadge extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  String _emojiFromName(String name) {
+    return switch (name) {
+      'utensils'   => '🍽️',
+      'activity'   => '⚡',
+      'user-check' => '✅',
+      'flame'      => '🔥',
+      'heart'      => '❤️',
+      'star'       => '⭐',
+      'zap'        => '⚡',
+      'target'     => '🎯',
+      _            => '🏆',
+    };
   }
 
   Color _getBgColor() {

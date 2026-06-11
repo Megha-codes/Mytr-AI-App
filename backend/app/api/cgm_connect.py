@@ -1,17 +1,14 @@
-import httpx
-import uuid
 from datetime import datetime, timedelta
 from typing import Optional, List
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
 from ..models.user import CGMDevice
-from ..core.config import settings
 from ..core.encryption import encrypt
 from ..core.secrets_manager import secrets_manager
 
@@ -59,10 +56,6 @@ class ConnectionResult(BaseModel):
     error_code:            Optional[str] = None
     error_message:         Optional[str] = None
 
-class DexcomConnectRequest(BaseModel):
-    code:  str
-    state: str
-
 class LibreConnectRequest(BaseModel):
     email:    str
     password: str
@@ -74,88 +67,6 @@ class DeviceMetadata(BaseModel):
     connected_at:       datetime
     sensor_status:      Optional[str]
     sensor_expiry_date: Optional[datetime]
-
-# ── Dexcom OAuth2 ────────────────────────────────────────────────────────────
-
-# Temporary store for OAuth states (CSRF protection)
-_oauth_states = {}
-
-@router.get("/cgm/oauth/dexcom/url")
-async def get_dexcom_url(user_id: UUID):
-    state = str(uuid.uuid4())
-    _oauth_states[state] = user_id
-    
-    url = (
-        f"https://sandbox-api.dexcom.com/v2/oauth2/login" # Use sandbox for dev
-        f"?client_id={settings.DEXCOM_CLIENT_ID}"
-        f"&redirect_uri={settings.DEXCOM_REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=offline_access"
-        f"&state={state}"
-    )
-    return {"url": url}
-
-@router.post("/cgm/connect/dexcom", response_model=ConnectionResult)
-async def connect_dexcom(
-    request: DexcomConnectRequest,
-    user_id: UUID, # Assume authenticated user_id is provided via middleware/dependency
-    db: AsyncSession = Depends(get_db),
-):
-    check_rate_limit(user_id)
-    
-    # Validate CSRF state
-    if request.state not in _oauth_states or _oauth_states[request.state] != user_id:
-        raise HTTPException(status_code=403, detail="Invalid OAuth state (CSRF)")
-    del _oauth_states[request.state]
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        token_response = await client.post(
-            settings.DEXCOM_TOKEN_URL,
-            data={
-                "grant_type":    "authorization_code",
-                "code":          request.code,
-                "redirect_uri":  settings.DEXCOM_REDIRECT_URI,
-                "client_id":     settings.DEXCOM_CLIENT_ID,
-                "client_secret": settings.DEXCOM_CLIENT_SECRET,
-            },
-        )
-
-    if token_response.status_code != 200:
-        return ConnectionResult(
-            connected=False,
-            device_type="DEXCOM",
-            error_code="TOKEN_EXCHANGE_FAILED",
-            error_message=f"Dexcom token exchange failed: {token_response.text}"
-        )
-
-    tokens = token_response.json()
-    expires_at = datetime.utcnow() + timedelta(seconds=tokens["expires_in"])
-
-    await secrets_manager.store_dexcom_tokens(
-        user_id=str(user_id),
-        access_token=tokens["access_token"],
-        refresh_token=tokens["refresh_token"],
-        expires_at=expires_at,
-    )
-
-    device = await _register_cgm_device(
-        db=db,
-        user_id=user_id,
-        device_type="DEXCOM_G7",
-        is_continuous=True,
-        supports_trend=True,
-        sensor_status="ACTIVE",
-        sensor_expiry_date=expires_at # Simplified for demo
-    )
-
-    return ConnectionResult(
-        connected=True,
-        device_id=device.id,
-        device_type=device.device_type,
-        sensor_status="ACTIVE",
-        sensor_expiry_date=device.sensor_expiry_date
-    )
-
 
 # ── FreeStyle Libre ──────────────────────────────────────────────────────────
 
@@ -289,15 +200,11 @@ async def reconnect_device(
 ):
     # This would involve re-validating stored credentials
     # For now, we'll just return a success if we have credentials
-    if "DEXCOM" in device_type:
-        creds = await secrets_manager.get_dexcom_credentials(str(user_id))
-        if creds:
-            return ConnectionResult(connected=True, device_type=device_type)
-    elif "LIBRE" in device_type:
+    if "LIBRE" in device_type:
         creds = await secrets_manager.get_libre_credentials(str(user_id))
         if creds:
             return ConnectionResult(connected=True, device_type=device_type)
-            
+
     return ConnectionResult(connected=False, device_type=device_type, error_message="No credentials stored")
 
 # ── Shared helper ─────────────────────────────────────────────────────────────

@@ -9,7 +9,7 @@ enum CgmConnectionStatus {
   /// User has tapped this tile but not yet started auth.
   selected,
 
-  /// In-app browser is opening (Dexcom) or bottom sheet is animating (Libre).
+  /// Connect bottom sheet is animating / credentials form is opening.
   connecting,
 
   /// Credentials have been forwarded; waiting for backend to validate with CGM API.
@@ -30,13 +30,6 @@ enum CgmConnectionStatus {
 
 /// Structured error codes returned from the backend or detected client-side.
 enum CgmConnectError {
-  // Dexcom
-  dexcomAuthCancelled,
-  dexcomInvalidCredentials,
-  dexcomShareNotEnabled,
-  dexcomNoActiveSensor,
-  dexcomTokenExchangeFailed,
-
   // Libre
   libreSetupNotDone,
   libreInvalidCredentials,
@@ -53,12 +46,6 @@ enum CgmConnectError {
 
 extension CgmConnectErrorMessage on CgmConnectError {
   String get userMessage => switch (this) {
-    CgmConnectError.dexcomAuthCancelled      => 'Connection cancelled. Tap Connect to try again.',
-    CgmConnectError.dexcomInvalidCredentials => 'Incorrect Dexcom credentials. Please check your username and password.',
-    CgmConnectError.dexcomShareNotEnabled    => 'Almost there! Please enable Dexcom Share in your Dexcom app to allow data access.\nSettings → Share → Enable Sharing',
-    CgmConnectError.dexcomNoActiveSensor     => 'No active sensor detected. Please start a new sensor session in your Dexcom app and try again.',
-    CgmConnectError.dexcomTokenExchangeFailed => 'Connection timed out. Please try again.',
-    
     CgmConnectError.libreSetupNotDone        => 'Connections not enabled. Please open your LibreLink app and enable LibreLinkUp under Connected Apps.',
     CgmConnectError.libreInvalidCredentials  => 'Incorrect LibreLinkUp credentials. Note: Use your LibreLinkUp account login, not your FreeStyle or Abbott account.',
     CgmConnectError.libreAccountNotFound     => 'No LibreLinkUp account found with this email. Please create a LibreLinkUp account first.',

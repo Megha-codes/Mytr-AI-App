@@ -2,8 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
+import '../../../core/config.dart';
 import '../../../core/network/dio_provider.dart';
 import '../../../core/auth/auth_session_provider.dart';
 import '../models/cgm_device_type.dart';
@@ -25,7 +25,7 @@ class CgmConnectionNotifier extends Notifier<CgmConnectionState> {
     final userId = ref.read(authSessionProvider);
     if (userId == null) return;
 
-    final wsUrl = 'ws://localhost:8000/ws/sensor-status/$userId';
+    final wsUrl = '${AppConfig.wsBaseUrl}/ws/sensor-status/$userId';
     try {
       _wsChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
       _wsChannel!.stream.listen((message) {
@@ -38,59 +38,6 @@ class CgmConnectionNotifier extends Notifier<CgmConnectionState> {
         Future.delayed(const Duration(seconds: 10), _initWebSocket);
       });
     } catch (_) {}
-  }
-
-  // ── Dexcom OAuth flow ───────────────────────────────────────────────────────
-
-  Future<void> connectDexcom() async {
-    state = const CgmConnectionState(status: CgmConnectionStatus.connecting);
-
-    try {
-      final userId = ref.read(authSessionProvider);
-      final response = await _dio.get('/cgm/oauth/dexcom/url', queryParameters: {'user_id': userId});
-      final authUrl = response.data['url'] as String;
-      
-      // Extract state from URL
-      final uri = Uri.parse(authUrl);
-      final stateNonce = uri.queryParameters['state'] ?? '';
-
-      final callbackResult = await FlutterWebAuth2.authenticate(
-        url: authUrl,
-        callbackUrlScheme: 'mytrai',
-      );
-
-      final code = Uri.parse(callbackResult).queryParameters['code'];
-      if (code == null) throw Exception('No code returned');
-
-      state = const CgmConnectionState(status: CgmConnectionStatus.validating);
-      await _exchangeDexcomCode(code: code, stateNonce: stateNonce);
-    } catch (e) {
-      state = CgmConnectionState(
-        status: CgmConnectionStatus.connectionFailed, 
-        error: e is DioException ? _mapDioError(e) : CgmConnectError.dexcomAuthCancelled
-      );
-    }
-  }
-
-  Future<void> _exchangeDexcomCode({required String code, required String stateNonce}) async {
-    try {
-      final userId = ref.read(authSessionProvider);
-      final response = await _dio.post(
-        '/cgm/connect/dexcom',
-        queryParameters: {'user_id': userId},
-        data: {'code': code, 'state': stateNonce},
-      );
-
-      final info = CgmConnectedInfo.fromJson(response.data as Map<String, dynamic>);
-      state = CgmConnectionState(
-        status: CgmConnectionStatus.connected,
-        connectedDevice: CgmDeviceType.dexcomG7,
-        connectedInfo: info,
-        sensorStatus: info.sensorStatus,
-      );
-    } on DioException catch (e) {
-      state = CgmConnectionState(status: CgmConnectionStatus.connectionFailed, error: _mapDioError(e));
-    }
   }
 
   // ── Libre credential flow ──────────────────────────────────────────────────

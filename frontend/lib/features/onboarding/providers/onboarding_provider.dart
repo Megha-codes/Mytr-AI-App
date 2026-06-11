@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:dio/dio.dart';
 import '../../../core/api/api_client.dart';
 
 enum UserType { t1, t2, fitness }
@@ -88,7 +87,8 @@ class OnboardingData {
       profileComplete: profileComplete ?? this.profileComplete,
       cgmDevice: cgmDevice ?? this.cgmDevice,
       baselineSleepHrs: baselineSleepHrs ?? this.baselineSleepHrs,
-      baselineActivityLevel: baselineActivityLevel ?? this.baselineActivityLevel,
+      baselineActivityLevel:
+          baselineActivityLevel ?? this.baselineActivityLevel,
       baselineStressLevel: baselineStressLevel ?? this.baselineStressLevel,
       baselineCalories: baselineCalories ?? this.baselineCalories,
       consentConfirmedAt: consentConfirmedAt ?? this.consentConfirmedAt,
@@ -105,7 +105,11 @@ class OnboardingNotifier extends Notifier<OnboardingData> {
   void setUserType(UserType type) {
     state = state.copyWith(
       userType: type,
-      diabetesType: type == UserType.t1 ? 'T1' : type == UserType.t2 ? 'T2' : null,
+      diabetesType: type == UserType.t1
+          ? 'T1'
+          : type == UserType.t2
+          ? 'T2'
+          : null,
     );
   }
 
@@ -183,7 +187,7 @@ class OnboardingNotifier extends Notifier<OnboardingData> {
       }
 
       final response = await apiClient.post(
-        '/api/v1/users/onboard',
+        '/users/onboard',
         data: {
           'user_type': userTypeStr,
           'name': data.name ?? 'User',
@@ -210,7 +214,8 @@ class OnboardingNotifier extends Notifier<OnboardingData> {
   }
 }
 
-final onboardingProvider =
-    NotifierProvider<OnboardingNotifier, OnboardingData>(() {
-  return OnboardingNotifier();
-});
+final onboardingProvider = NotifierProvider<OnboardingNotifier, OnboardingData>(
+  () {
+    return OnboardingNotifier();
+  },
+);

@@ -3,15 +3,6 @@ from datetime import datetime
 from typing import Optional
 
 
-# ── Dexcom (OAuth2 tokens) ───────────────────────────────────────────────────
-
-@dataclass
-class DexcomCredentials:
-    access_token:  str
-    refresh_token: str
-    expires_at:    datetime
-
-
 # ── FreeStyle Libre (LibreLinkUp credentials) ────────────────────────────────
 
 @dataclass
@@ -43,7 +34,6 @@ class MockSecretsManager:
     In production, replace with a boto3 client that calls
     secretsmanager.put_secret_value / get_secret_value.
     Secret names follow the convention:
-      "dexcom:{user_id}"  →  DexcomCredentials
       "libre:{user_id}"   →  LibreCredentials
       "fitbit:{user_id}"  →  FitbitCredentials
       "garmin:{user_id}"  →  GarminCredentials
@@ -51,26 +41,6 @@ class MockSecretsManager:
 
     def __init__(self) -> None:
         self._store: dict = {}
-
-    # Dexcom ─────────────────────────────────────────────────────────────────
-
-    async def store_dexcom_tokens(
-        self,
-        user_id: str,
-        access_token: str,
-        refresh_token: str,
-        expires_at: datetime,
-    ) -> None:
-        self._store[f"dexcom:{user_id}"] = DexcomCredentials(
-            access_token=access_token,
-            refresh_token=refresh_token,
-            expires_at=expires_at,
-        )
-
-    async def get_dexcom_credentials(
-        self, user_id: str
-    ) -> Optional[DexcomCredentials]:
-        return self._store.get(f"dexcom:{user_id}")
 
     # Libre ──────────────────────────────────────────────────────────────────
 
@@ -133,7 +103,7 @@ class MockSecretsManager:
     async def delete_credentials(self, user_id: str, device_type: str) -> None:
         """
         Wipes secrets for a specific device type.
-        device_type should be "dexcom", "libre", "fitbit", or "garmin".
+        device_type should be "libre", "fitbit", or "garmin".
         """
         key = f"{device_type.lower()}:{user_id}"
         if key in self._store:
