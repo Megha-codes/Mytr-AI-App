@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:camera/camera.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/stat_widgets.dart';

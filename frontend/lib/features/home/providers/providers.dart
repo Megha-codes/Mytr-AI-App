@@ -10,6 +10,7 @@ export '../models/models.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/models.dart';
 import '../../profile/providers/user_profile_provider.dart';
+import '../../wearables/providers/wearable_provider.dart';
 import 'subproviders/dashboard_provider.dart';
 
 // ── InsulinProvider ──────────────────────────────────────────────────────────
@@ -113,7 +114,25 @@ class DeviceState {
 }
 
 final deviceProvider = Provider<DeviceState>((ref) {
-  return DeviceState(connectedCGM: null, connectedWearables: const []);
+  final wearables = ref.watch(wearableProvider).valueOrNull;
+  final connected = <WearableDevice>[];
+
+  if (wearables?.healthConnected == true) {
+    connected.add(WearableDevice(
+      name: wearables!.healthName,
+      type: 'HEALTH',
+      lastSync: wearables.healthLastSync ?? DateTime.now(),
+    ));
+  }
+  if (wearables?.googleHealthConnected == true) {
+    connected.add(WearableDevice(
+      name: 'Fitbit',
+      type: 'GOOGLE_HEALTH',
+      lastSync: wearables!.googleHealthLastSync ?? DateTime.now(),
+    ));
+  }
+
+  return DeviceState(connectedCGM: null, connectedWearables: connected);
 });
 
 // ── ChallengesProvider ────────────────────────────────────────────────────────

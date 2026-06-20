@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/icons/lucide_icons.dart';
 import 'dart:io';
 import '../../../../core/app_colors.dart';
 import '../widgets/meal_recognition_card.dart';

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../models/models.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/icons/lucide_icons.dart';
 
 class CameraOverlay extends StatefulWidget {
   const CameraOverlay({super.key});

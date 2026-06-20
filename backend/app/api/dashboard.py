@@ -5,9 +5,11 @@ from sqlalchemy import select, func
 
 from ..database import get_db
 from ..timescale_database import TimescaleSessionLocal
+from datetime import date
 from ..models.user import User, InsulinProfile
 from ..models.meal_log import MealLog
 from ..models.glucose_reading import GlucoseReadingModel
+from ..models.activity import ActivityLog
 from .auth import get_current_user
 
 router = APIRouter()
@@ -126,6 +128,14 @@ async def get_dashboard(
             target_min <= r.value_mgdl <= target_max for r in last_4h
         )
 
+    # ── Today's activity (synced from phone) ─────────────────────────────────
+    activity_result = await db.execute(
+        select(ActivityLog)
+        .where(ActivityLog.user_id == current_user.id)
+        .where(ActivityLog.date == date.today())
+    )
+    activity = activity_result.scalar_one_or_none()
+
     challenges = [
         {
             "id": "log_first_meal",
@@ -176,10 +186,9 @@ async def get_dashboard(
             "meals_logged_today": meals_count,
         },
         "activity": {
-            # TODO: Integrate with health package data — activity synced from phone
-            "steps_today": 0,
+            "steps_today": activity.steps_today if activity else 0,
             "steps_goal": 10000,
-            "calories_burned": 0,
+            "calories_burned": activity.calories_burned if activity else 0,
             "active_minutes": 0,
         },
         "challenges": challenges,

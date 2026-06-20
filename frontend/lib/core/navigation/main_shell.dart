@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../icons/lucide_icons.dart';
 import '../../features/profile/providers/user_profile_provider.dart';
 import '../../features/home/models/models.dart';
 import '../theme/app_theme.dart';

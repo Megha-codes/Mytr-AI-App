@@ -30,6 +30,7 @@ class User(Base):
     cgm_devices = relationship("CGMDevice", back_populates="user")
     wearable_devices = relationship("WearableDevice", back_populates="user")
     lifestyle_baselines = relationship("LifestyleBaseline", back_populates="user")
+    activity_logs = relationship("ActivityLog", back_populates="user")
 
 class InsulinProfile(Base):
     __tablename__ = "insulin_profiles"

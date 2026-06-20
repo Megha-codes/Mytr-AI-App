@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/icons/lucide_icons.dart';
 import '../../models/cgm_connection_state.dart';
 
 class CgmErrorCard extends StatelessWidget {

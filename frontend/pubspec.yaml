@@ -33,7 +33,7 @@ dependencies:
   web_socket_channel: ^3.0.3
   flutter_web_auth_2: ^5.0.2
   google_fonts: ^8.1.0
-  lucide_icons: ^0.257.0
+  crypto: ^3.0.6
   curved_navigation_bar: ^1.0.6
   intl: ^0.20.2
   url_launcher: ^6.3.1

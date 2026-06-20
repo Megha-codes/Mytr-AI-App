@@ -6,7 +6,7 @@ import '../../../../core/app_colors.dart';
 import '../../../../core/widgets/primary_button.dart';
 import '../../onboarding_provider.dart';
 import '../widgets/onboarding_layout.dart';
-import 'package:lucide_icons/lucide_icons.dart';
+import '../../../../core/icons/lucide_icons.dart';
 
 class CreateAccountScreen extends ConsumerStatefulWidget {
   const CreateAccountScreen({super.key});

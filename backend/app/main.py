@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from .api.activity import router as activity_router
 from .api.onboarding import router as onboarding_router
 from .api.auth import router as auth_router
 from .api.account import router as account_router
@@ -37,6 +38,7 @@ app.add_middleware(
 
 # Include routers
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+app.include_router(activity_router, prefix="/api/v1", tags=["activity"])
 app.include_router(account_router, prefix="/api/v1/account", tags=["account"])
 app.include_router(onboarding_router, prefix="/api/v1/users", tags=["users"])
 app.include_router(user_router, prefix="/api/v1/user", tags=["user"])
