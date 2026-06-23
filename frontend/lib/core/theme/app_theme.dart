@@ -5,91 +5,104 @@ class AppTheme {
   AppTheme._();
 
   // ── Colour Tokens ──────────────────────────────────────────────────────────
-  static const Color backgroundDark    = Color(0xFF111111);
-  static const Color backgroundCream   = Color(0xFFF8F3EC);
-  static const Color backgroundWhite   = Color(0xFFFFFFFF);
-  static const Color backgroundSurface = Color(0xFFFAFAFA);
-  static const Color borderLight       = Color(0xFFDDD5C5);
-  static const Color borderDark        = Color(0xFFC0B8A8);
+  static const Color backgroundDark    = Color(0xFF1B0B3A); // deep aubergine
+  static const Color backgroundDark2   = Color(0xFF2A1357); // aubergine 2
+  static const Color backgroundCream   = Color(0xFFE9F1F7); // light section bg
+  static const Color backgroundWhite   = Color(0xFFFFFFFF); // page bg
+  static const Color backgroundSurface = Color(0xFFF5F3FF); // lavender-tinted surface
 
-  static const Color brandGreen        = Color(0xFF6DC534);
-  static const Color brandGreenDark    = Color(0xFF2D5A14);
-  static const Color brandGreenLight   = Color(0xFFE4E9DE);
+  static const Color borderLight       = Color(0xFFE2D9F3); // lavender border
+  static const Color borderDark        = Color(0xFF3D2070); // dark section border
 
-  static const Color accentCyan        = Color(0xFF00C2E0);
-  static const Color accentCyanLight   = Color(0xFFE0F7FA);
+  // Brand purple (replaces green — same symbol names kept for compatibility)
+  static const Color brandGreen        = Color(0xFF7C3AED); // light purple (alias)
+  static const Color brandGreenDark    = Color(0xFF4C1D95);
+  static const Color brandGreenLight   = Color(0xFFEDE9FE); // very light lavender
 
-  static const Color accentOrange      = Color(0xFFF97316);
+  // Explicit new brand tokens
+  static const Color brandPurple       = Color(0xFF7C3AED);
+  static const Color brandPurpleMid    = Color(0xFF6D28D9);
+  static const Color brandPurpleDeep   = Color(0xFF5B21B6);
+  static const Color brandRed          = Color(0xFFE11D2A);
+  static const Color brandRedDeep      = Color(0xFFB0121C);
+
+  // Accent (cyan alias → purple for compatibility)
+  static const Color accentCyan        = Color(0xFF7C3AED);
+  static const Color accentCyanLight   = Color(0xFFEDE9FE);
+  static const Color accentOrange      = Color(0xFFF97316); // activity/calories
   static const Color accentOrangeDark  = Color(0xFF9A450D);
   static const Color accentOrangeLight = Color(0xFFFFF7ED);
 
+  // Glucose functional colours (unchanged — clinical meaning)
   static const Color glucoseHigh       = Color(0xFFF97316);
   static const Color glucoseHyper      = Color(0xFFEF4444);
   static const Color glucoseLow        = Color(0xFFFB923C);
   static const Color glucoseHypo       = Color(0xFFB91C1C);
-  static const Color glucoseTarget     = brandGreen;
+  static const Color glucoseTarget     = brandPurple;
 
-  static const Color textPrimary       = Color(0xFF111111);
-  static const Color textSecondary     = Color(0xFFB0A898);
-  static const Color textHint          = Color(0xFFD1D1D1);
+  // Text
+  static const Color textPrimary       = Color(0xFF1B1430);
+  static const Color textSecondary     = Color(0xFF5E5872);
+  static const Color textHint          = Color(0xFF9A93AB);
   static const Color textOnDark        = Color(0xFFFFFFFF);
-  static const Color textOnDarkMuted   = Color(0xFFB0B0B0);
+  static const Color textOnDarkMuted   = Color(0xFFB79CFF); // lavender on dark
 
-  static const Color xpGradientStart   = Color(0xFF00C2E0);
-  static const Color xpGradientEnd     = Color(0xFF6DC534);
+  // XP gradient: purple → red
+  static const Color xpGradientStart   = Color(0xFF7C3AED);
+  static const Color xpGradientEnd     = Color(0xFFE11D2A);
 
-  // ── Typography Tokens ──────────────────────────────────────────────────────
-  static TextStyle get displayLarge => GoogleFonts.plusJakartaSans(
+  // ── Typography Tokens (Inter) ──────────────────────────────────────────────
+  static TextStyle get displayLarge => GoogleFonts.inter(
     fontSize: 48,
     fontWeight: FontWeight.w800,
     color: textPrimary,
     letterSpacing: -1,
   );
 
-  static TextStyle get displayMedium => GoogleFonts.plusJakartaSans(
+  static TextStyle get displayMedium => GoogleFonts.inter(
     fontSize: 24,
     fontWeight: FontWeight.w800,
     color: textPrimary,
   );
 
-  static TextStyle get titleLarge => GoogleFonts.plusJakartaSans(
+  static TextStyle get titleLarge => GoogleFonts.inter(
     fontSize: 20,
     fontWeight: FontWeight.w700,
     color: textPrimary,
   );
 
-  static TextStyle get titleMedium => GoogleFonts.plusJakartaSans(
+  static TextStyle get titleMedium => GoogleFonts.inter(
     fontSize: 18,
     fontWeight: FontWeight.w700,
     color: textPrimary,
   );
 
-  static TextStyle get labelLarge => GoogleFonts.plusJakartaSans(
+  static TextStyle get labelLarge => GoogleFonts.inter(
     fontSize: 14,
     fontWeight: FontWeight.w700,
     color: textPrimary,
   );
 
-  static TextStyle get labelSmall => GoogleFonts.plusJakartaSans(
+  static TextStyle get labelSmall => GoogleFonts.inter(
     fontSize: 10,
     fontWeight: FontWeight.w800,
     color: textSecondary,
     letterSpacing: 1.5,
   );
 
-  static TextStyle get bodyMedium => GoogleFonts.plusJakartaSans(
+  static TextStyle get bodyMedium => GoogleFonts.inter(
     fontSize: 14,
     fontWeight: FontWeight.w500,
     color: textPrimary,
   );
 
-  static TextStyle get bodyLarge => GoogleFonts.plusJakartaSans(
+  static TextStyle get bodyLarge => GoogleFonts.inter(
     fontSize: 16,
     fontWeight: FontWeight.w600,
     color: textPrimary,
   );
 
-  static TextStyle get bodySmall => GoogleFonts.plusJakartaSans(
+  static TextStyle get bodySmall => GoogleFonts.inter(
     fontSize: 12,
     fontWeight: FontWeight.w500,
     color: textSecondary,
@@ -106,13 +119,15 @@ class AppTheme {
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: backgroundCream,
+      scaffoldBackgroundColor: backgroundWhite,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: brandGreen,
-        primary: brandGreen,
+        seedColor: brandPurpleDeep,
+        primary: brandPurpleDeep,
+        secondary: brandRed,
         surface: backgroundWhite,
+        brightness: Brightness.light,
       ),
-      textTheme: TextTheme(
+      textTheme: GoogleFonts.interTextTheme(ThemeData.light().textTheme).copyWith(
         displayLarge: displayLarge,
         displayMedium: displayMedium,
         titleLarge: titleLarge,
@@ -122,6 +137,33 @@ class AppTheme {
         bodyMedium: bodyMedium,
         bodySmall: bodySmall,
       ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: backgroundSurface,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(cardRadius),
+          borderSide: const BorderSide(color: borderLight),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(cardRadius),
+          borderSide: const BorderSide(color: borderLight),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(cardRadius),
+          borderSide: const BorderSide(color: brandPurple, width: 2),
+        ),
+        hintStyle: GoogleFonts.inter(color: textHint, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: brandPurpleDeep,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(pillRadius),
+          ),
+        ),
+      ),
     );
   }
 
@@ -130,10 +172,11 @@ class AppTheme {
       useMaterial3: true,
       scaffoldBackgroundColor: backgroundDark,
       colorScheme: const ColorScheme.dark(
-        primary: brandGreen,
+        primary: brandPurple,
+        secondary: brandRed,
         surface: backgroundDark,
       ),
-      textTheme: TextTheme(
+      textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme).copyWith(
         displayLarge: displayLarge.copyWith(color: textOnDark),
         displayMedium: displayMedium.copyWith(color: textOnDark),
         titleLarge: titleLarge.copyWith(color: textOnDark),

@@ -20,7 +20,7 @@ class HomeScreen extends ConsumerWidget {
     final profileAsync = ref.watch(userProfileProvider);
 
     return Scaffold(
-      backgroundColor: AppTheme.backgroundCream,
+      backgroundColor: AppTheme.backgroundWhite,
       floatingActionButton: kDebugMode 
         ? FloatingActionButton.small(
             heroTag: 'home_debug_fab',

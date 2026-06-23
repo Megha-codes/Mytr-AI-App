@@ -51,7 +51,7 @@ class ManageDevicesScreen extends ConsumerWidget {
                             child: CircularProgressIndicator(),
                           ),
                         ),
-                        error: (_, __) => _buildWearablesList(
+                        error: (_, _) => _buildWearablesList(
                           context, ref, const WearableConnectionState(),
                         ),
                       ),
