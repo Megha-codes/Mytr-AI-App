@@ -30,9 +30,16 @@ class AuthStorageService {
   Future<String?> getRefreshToken() => _safeRead(_refreshTokenKey);
 
   Future<void> clearAll() async {
+    // Clear tokens and session data but KEEP the onboarding flag so returning
+    // users who log out land on /auth/login, not the intro screen.
     try {
-      await _storage.deleteAll();
-    } catch (_) {}
+      await _storage.delete(key: _accessTokenKey);
+      await _storage.delete(key: _refreshTokenKey);
+      await _storage.delete(key: _userTypeKey);
+      await _storage.delete(key: _onboardingStepKey);
+    } catch (_) {
+      try { await _storage.deleteAll(); } catch (_) {}
+    }
   }
 
   Future<bool> hasCompletedOnboarding() async {

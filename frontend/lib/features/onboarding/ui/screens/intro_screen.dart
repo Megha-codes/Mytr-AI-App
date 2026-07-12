@@ -168,25 +168,25 @@ class IntroScreen extends StatelessWidget {
                     variant: ButtonVariant.tertiary,
                     onPressed: () => context.push('/onboarding/create-account'),
                   ),
-                  const SizedBox(height: 20),
-                  GestureDetector(
-                    onTap: () => context.push('/auth/login'),
-                    child: RichText(
-                      text: const TextSpan(
-                        text: 'Already have an account? ',
-                        style: TextStyle(
-                          color: AppColors.textSecondary,
-                          fontSize: 11,
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: OutlinedButton(
+                      onPressed: () => context.push('/auth/login'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.nearBlack,
+                        side: const BorderSide(color: AppColors.nearBlack, width: 1.5),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
                         ),
-                        children: [
-                          TextSpan(
-                            text: 'Sign in',
-                            style: TextStyle(
-                              color: AppColors.nearBlack,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
+                      ),
+                      child: const Text(
+                        'Sign In',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),

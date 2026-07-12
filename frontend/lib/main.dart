@@ -19,12 +19,7 @@ void main() async {
   await Hive.initFlutter();
 
   // Register Adapters
-  Hive.registerAdapter(UserTypeAdapter());
-  Hive.registerAdapter(AchievementAdapter());
   Hive.registerAdapter(UserProfileAdapter());
-  Hive.registerAdapter(GlucoseTrendAdapter());
-  Hive.registerAdapter(GlucoseStatusAdapter());
-  Hive.registerAdapter(GlucoseReadingAdapter());
   Hive.registerAdapter(ActivitySummaryAdapter());
   Hive.registerAdapter(SleepDataAdapter());
   Hive.registerAdapter(SleepStageAdapter());
