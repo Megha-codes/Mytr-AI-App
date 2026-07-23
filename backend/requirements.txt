@@ -17,3 +17,9 @@ typing_extensions==4.15.0
 uvicorn==0.46.0
 bcrypt>=4.0.0
 python-jose[cryptography]>=3.3.0
+# IANA timezone database for zoneinfo. Required for LibreLinkUp timestamp->UTC
+# conversion (app/services/libre_timestamp.py): without it, zoneinfo can't
+# resolve names like "Asia/Kolkata" on systems lacking a system tz database
+# (notably Windows) and silently falls back to UTC — reintroducing the exact
+# naive-UTC mis-stamping this fix removes.
+tzdata>=2024.1

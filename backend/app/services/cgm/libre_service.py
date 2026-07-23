@@ -1,8 +1,14 @@
 import httpx
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from .factory import BaseCGMService, CGMReading
+from ...core.config import settings
+# Shared, tz-resolving parser that turns LibreLinkUp's US-style, timezone-less
+# timestamps into UTC (see libre_timestamp.libre_timestamp_to_epoch). That
+# module is an intentional duplicate of the desk-device repo's copy — keep both
+# in sync.
+from ..libre_timestamp import libre_timestamp_to_epoch
 
 _TREND_MAP = {
     1: ("FALLING_FAST",  "↓↓"),
@@ -22,11 +28,14 @@ _LIBRE_BASES = [
 ]
 _LLU_HEADERS = {"product": "llu.android", "version": "4.7.0"}
 
-_FALLBACK_READING = CGMReading(
-    value=112, timestamp=datetime.utcnow(),
-    trend="STABLE", trend_arrow="→",
-    device_type="LIBRE", is_continuous=True,
-)
+
+class LibreServiceError(Exception):
+    """Raised when a LibreLinkUp fetch fails (auth, network, or API error).
+
+    The caller must surface a no-data / stale state to the user — we never
+    synthesize a glucose reading, since a fabricated value on a metabolic-health
+    app is a safety hazard.
+    """
 
 
 @dataclass
@@ -42,6 +51,13 @@ class LibreCGMService(BaseCGMService):
     is_continuous = True
     supports_trend = True
 
+    def __init__(self) -> None:
+        # Per-user cached session: user_id -> (token, region_base). Populated on
+        # the first fetch and reused, so each subsequent poll is a single logged-in
+        # request instead of re-scanning all six regional hosts and re-logging-in.
+        # A 401 drops the entry and forces one re-login (see _fetch_reading).
+        self._sessions: dict[str, tuple[str, str]] = {}
+
     # ── Public interface ─────────────────────────────────────────────────────
 
     async def get_latest_reading(self, user_id: str) -> CGMReading | None:
@@ -53,20 +69,25 @@ class LibreCGMService(BaseCGMService):
         target_time: datetime,
         tolerance_minutes: int = 10,
     ) -> CGMReading | None:
+        """Return the closest reading within tolerance, or None if there simply
+        isn't a recent one. Raises LibreServiceError on any fetch failure — the
+        caller must render a no-data/stale state, never a synthesized value.
+        """
         from ...core.secrets_manager import secrets_manager
         from ...core.encryption import decrypt
 
         creds = await secrets_manager.get_libre_credentials(user_id)
         if creds is None:
-            return _FALLBACK_READING
+            raise LibreServiceError("No LibreLinkUp credentials stored for this user")
 
         try:
             password = decrypt(creds.encrypted_password)
-        except Exception:
-            return _FALLBACK_READING
+        except Exception as exc:
+            raise LibreServiceError("Stored LibreLinkUp credentials could not be decrypted") from exc
 
-        # Try to find the region base URL if stored, otherwise try all
-        return await self._fetch_reading(creds.email, password, target_time, tolerance_minutes)
+        return await self._fetch_reading(
+            user_id, creds.email, password, target_time, tolerance_minutes
+        )
 
     async def validate_credentials(
         self, email: str, password: str
@@ -84,7 +105,7 @@ class LibreCGMService(BaseCGMService):
                         success=False,
                         error_message="Invalid LibreLinkUp credentials or unsupported region.",
                     )
-                
+
                 token, region_base = auth_data
                 connections = await self._get_connections(client, region_base, token)
 
@@ -127,35 +148,69 @@ class LibreCGMService(BaseCGMService):
 
     # ── Internal helpers ─────────────────────────────────────────────────────
 
+    def _client(self) -> httpx.AsyncClient:
+        # Small seam so tests can inject an httpx.MockTransport.
+        return httpx.AsyncClient(timeout=15.0)
+
     async def _fetch_reading(
         self,
+        user_id: str,
         email: str,
         password: str,
         target_time: datetime,
         tolerance_minutes: int,
     ) -> CGMReading | None:
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                auth_data = await self._authenticate_any_region(client, email, password)
-                if not auth_data:
-                    return _FALLBACK_READING
-                
-                token, region_base = auth_data
-                connections = await self._get_connections(client, region_base, token)
-                if not connections:
-                    return _FALLBACK_READING
-
-                patient_id = connections[0]["patientId"]
-                graph_resp = await client.get(
-                    f"{region_base}/llu/connections/{patient_id}/graph",
-                    headers={**_LLU_HEADERS, "Authorization": f"Bearer {token}"},
-                )
-                graph_resp.raise_for_status()
-                readings = graph_resp.json()["data"]["graphData"]
+            async with self._client() as client:
+                token, region_base = await self._get_session(client, user_id, email, password)
+                try:
+                    readings = await self._graph_readings(client, region_base, token)
+                except httpx.HTTPStatusError as exc:
+                    if exc.response.status_code != 401:
+                        raise
+                    # Cached token expired — drop it, re-establish once, retry.
+                    self._sessions.pop(user_id, None)
+                    token, region_base = await self._get_session(
+                        client, user_id, email, password
+                    )
+                    readings = await self._graph_readings(client, region_base, token)
 
             return self._find_closest_reading(readings, target_time, tolerance_minutes)
-        except Exception:
-            return _FALLBACK_READING
+        except LibreServiceError:
+            raise
+        except Exception as exc:
+            # Never fall back to a synthesized reading — fail loudly.
+            raise LibreServiceError(f"LibreLinkUp fetch failed: {exc}") from exc
+
+    async def _get_session(
+        self, client: httpx.AsyncClient, user_id: str, email: str, password: str
+    ) -> tuple[str, str]:
+        """Return a cached (token, region_base) for the user, or establish one by
+        scanning regions and logging in once, then cache it."""
+        cached = self._sessions.get(user_id)
+        if cached is not None:
+            return cached
+        auth = await self._authenticate_any_region(client, email, password)
+        if auth is None:
+            raise LibreServiceError(
+                "LibreLinkUp login failed (invalid credentials or unsupported region)"
+            )
+        self._sessions[user_id] = auth
+        return auth
+
+    async def _graph_readings(
+        self, client: httpx.AsyncClient, region_base: str, token: str
+    ) -> list:
+        connections = await self._get_connections(client, region_base, token)
+        if not connections:
+            raise LibreServiceError("No LibreLinkUp connections (sharing not enabled)")
+        patient_id = connections[0]["patientId"]
+        graph_resp = await client.get(
+            f"{region_base}/llu/connections/{patient_id}/graph",
+            headers={**_LLU_HEADERS, "Authorization": f"Bearer {token}"},
+        )
+        graph_resp.raise_for_status()
+        return graph_resp.json()["data"]["graphData"]
 
     async def _authenticate_any_region(
         self, client: httpx.AsyncClient, email: str, password: str
@@ -192,13 +247,27 @@ class LibreCGMService(BaseCGMService):
         if not readings:
             return None
 
+        # Compare everything in timezone-aware UTC. LibreLinkUp's Timestamp is a
+        # US-style, timezone-less string; resolve it against the configured
+        # account timezone (same logic as the device poller) rather than the
+        # old naive-as-UTC parse, which mis-stamped readings by the account's
+        # UTC offset.
+        if target_time.tzinfo is None:
+            target_time = target_time.replace(tzinfo=timezone.utc)
+        tz_name = settings.LIBRE_ACCOUNT_TIMEZONE or None
+
         closest_item = closest_time = None
         min_delta = timedelta(minutes=tolerance_minutes + 1)
 
         for item in readings:
+            raw_ts = item.get("Timestamp")
+            if not raw_ts:
+                continue
             try:
-                reading_time = datetime.strptime(item["Timestamp"], "%m/%d/%Y %I:%M:%S %p")
-            except (ValueError, KeyError):
+                reading_time = datetime.fromtimestamp(
+                    libre_timestamp_to_epoch(raw_ts, tz_name), tz=timezone.utc
+                )
+            except ValueError:
                 continue
 
             delta = abs(reading_time - target_time)

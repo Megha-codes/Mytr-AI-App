@@ -14,5 +14,10 @@ class Settings:
     GARMIN_CONSUMER_SECRET: str = os.getenv("GARMIN_CONSUMER_SECRET", "")
     GARMIN_REDIRECT_URI:    str = os.getenv("GARMIN_REDIRECT_URI", "mytrai://garmin/callback")
 
+    # IANA timezone the LibreLinkUp account's naive timestamps are expressed in
+    # (e.g. "Asia/Kolkata"). Used to convert LibreLinkUp's timezone-less
+    # timestamps to UTC in the CGM path. Empty -> timestamps are treated as UTC.
+    LIBRE_ACCOUNT_TIMEZONE: str = os.getenv("LIBRE_ACCOUNT_TIMEZONE", "")
+
 
 settings = Settings()
