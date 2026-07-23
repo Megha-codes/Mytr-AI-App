@@ -13,8 +13,10 @@ from .api.dashboard import router as dashboard_router
 from .api.achievements import router as achievements_router
 from .api.coach import router as coach_router
 from .api.reports import router as reports_router
-from .api.websockets import glucose_stream, status_websocket
+from .api.devices import router as devices_router
+from .api.websockets import glucose_stream, status_websocket, device_stream
 from .timescale_database import init_timescale_schema
+from .device_runtime import start_device_pipeline, stop_device_pipeline
 
 app = FastAPI(
     title="Mytr.AI",
@@ -26,6 +28,12 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup() -> None:
     await init_timescale_schema()
+    await start_device_pipeline()
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await stop_device_pipeline()
 
 # CORS middleware for Flutter frontend communication
 app.add_middleware(
@@ -50,8 +58,12 @@ app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboar
 app.include_router(achievements_router, prefix="/api/v1/achievements", tags=["achievements"])
 app.include_router(coach_router, prefix="/api/v1/coach", tags=["coach"])
 app.include_router(reports_router, prefix="/api/v1", tags=["reports"])
+# mytr-desk device pipeline — paths are versioned /v1/... (not /api/v1) to match
+# the contract the device's syncd is already built against.
+app.include_router(devices_router, prefix="/v1", tags=["devices"])
 app.include_router(glucose_stream.router, tags=["websockets"])
 app.include_router(status_websocket.router, tags=["websockets"])
+app.include_router(device_stream.router, tags=["websockets"])
 
 @app.get("/")
 def read_root():
