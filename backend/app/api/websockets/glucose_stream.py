@@ -6,7 +6,6 @@ import json
 from datetime import datetime
 
 from app.database import get_db
-from app.services.cgm.factory import cgm_service_factory
 from app.models.user import CGMDevice, InsulinProfile, User
 from app.core.security import decode_token_payload, TOKEN_TYPE_ACCESS
 from sqlalchemy import select, text
@@ -72,27 +71,35 @@ async def get_insulin_profile(user_id: str, db: AsyncSession):
         target_glucose_max = 130
     return MockProfile()
 
-async def store_glucose_reading(reading, user_id: str, db: AsyncSession):
-    from ...models.glucose_reading import GlucoseReadingModel
-    from ...timescale_database import TimescaleSessionLocal
-    from datetime import timezone
+async def get_latest_stored_reading(user_id: str, db: AsyncSession):
+    """Reads the most recent glucose_readings row for this user — the shared
+    LibreIngestionService (§4.3) is the sole writer now, running independent
+    of this connection. Not filtered by source: whatever is most recent is
+    what the live card should show."""
+    from app.timescale_database import TimescaleSessionLocal
+    from app.models.glucose_reading import GlucoseReadingModel
+    from sqlalchemy import desc
+    from uuid import UUID as PUUID
 
-    recorded_at = reading.timestamp
-    if recorded_at.tzinfo is None:
-        recorded_at = recorded_at.replace(tzinfo=timezone.utc)
-
-    async with TimescaleSessionLocal() as ts_session:
-        record = GlucoseReadingModel(
-            user_id=user_id,
-            value_mgdl=reading.value,
-            trend=reading.trend,
-            trend_arrow=reading.trend_arrow,
-            device_type=reading.device_type,
-            is_continuous=reading.is_continuous,
-            recorded_at=recorded_at,
-        )
-        ts_session.add(record)
-        await ts_session.commit()
+    try:
+        async with TimescaleSessionLocal() as ts:
+            result = await ts.execute(
+                select(GlucoseReadingModel)
+                .where(GlucoseReadingModel.user_id == PUUID(user_id))
+                .order_by(desc(GlucoseReadingModel.recorded_at))
+                .limit(1)
+            )
+            row = result.scalars().first()
+        if row:
+            class _R:
+                value       = row.value_mgdl
+                timestamp   = row.recorded_at
+                trend       = row.trend
+                trend_arrow = row.trend_arrow
+            return _R()
+    except Exception:
+        pass
+    return None
 
 def _check_alerts(value: int, user_id: str, db: AsyncSession) -> list[dict]:
     # synchronous mock version or we can await if necessary. The user snippet has it synchronous.
@@ -189,8 +196,8 @@ async def glucose_websocket(
                 await websocket.send_json({"type": "PING"})
 
         else:
-            # CGM or Bluetooth BGM — start polling loop
-            await _start_polling_loop(
+            # CGM or Bluetooth BGM — read from the store, not Abbott directly.
+            await _start_store_reader_loop(
                 websocket=websocket,
                 user_id=user_id,
                 device_type=device_type_str,
@@ -201,25 +208,24 @@ async def glucose_websocket(
         manager.disconnect(user_id)
 
 
-async def _start_polling_loop(
+async def _start_store_reader_loop(
     websocket: WebSocket,
     user_id: str,
     device_type: str,
     db: AsyncSession,
 ):
-    cgm_service = cgm_service_factory(device_type)
-
-    # Libre sensors update roughly every minute
-    poll_interval_seconds = {
-        "LIBRE_2":   60,
-        "LIBRE_3":   60,
-    }.get(device_type, 60)
+    """Polls the store (glucose_readings), not Abbott. LibreIngestionService
+    (§4.3) is the only thing that talks to LibreLinkUp now, running as a
+    background task independent of any websocket connection — this loop just
+    watches for what it's already written, so the live card no longer
+    depends on someone having this socket open."""
+    poll_interval_seconds = 15  # store reads are cheap; no external rate limit to respect
 
     last_sent_timestamp = None
 
     while True:
         try:
-            reading = await cgm_service.get_latest_reading(user_id)
+            reading = await get_latest_stored_reading(user_id, db)
 
             if reading and reading.timestamp != last_sent_timestamp:
                 # New reading available — send to Flutter
@@ -238,10 +244,6 @@ async def _start_polling_loop(
                 }
 
                 await websocket.send_json(payload)
-
-                # Store in TimescaleDB
-                await store_glucose_reading(reading, user_id, db)
-
                 last_sent_timestamp = reading.timestamp
 
             await asyncio.sleep(poll_interval_seconds)
