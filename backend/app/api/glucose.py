@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..models.glucose_reading import GlucoseReadingModel
 from ..models.user import User
+from ..services.realtime.fanout_hub import fanout_hub
 from ..timescale_database import TimescaleSessionLocal
 from .auth import get_current_user
 from .websockets.glucose_stream import manager, _check_alerts
@@ -51,7 +52,9 @@ async def log_manual_glucose(
         await ts_session.refresh(reading)
         reading_id = str(reading.id)
 
-    # Push to open WebSocket so the live glucose card refreshes immediately
+    # Push to open WebSocket so the live glucose card refreshes immediately.
+    # Interim mechanism — the old /ws/glucose endpoint's own manager, kept
+    # until it's retired in favor of the fanout hub's /ws/app/stream (Phase B).
     await manager.send_reading(
         user_id=str(current_user.id),
         reading={
@@ -63,6 +66,19 @@ async def log_manual_glucose(
             "is_continuous": False,
             "alerts":        _check_alerts(request.value_mgdl, str(current_user.id), db),
         },
+    )
+
+    # Publish through the fanout hub too (architecture-v3.md §2.6) — a
+    # manual entry must be indistinguishable downstream from a Libre one:
+    # same glucose.reading shape, just source="MANUAL" and no sensor_id.
+    fanout_hub.publish_glucose_reading(
+        current_user.id,
+        recorded_at=recorded_at,
+        mgdl=request.value_mgdl,
+        trend=None,
+        trend_arrow="→",
+        sensor_id=None,
+        source="MANUAL",
     )
 
     return {"success": True, "reading_id": reading_id}
