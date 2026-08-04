@@ -32,12 +32,17 @@ class EligibleAccount:
     cgm_device_id: UUID  # target for the durable region_base cache
 
 
-async def get_eligible_accounts(db: AsyncSession) -> list[EligibleAccount]:
+async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[EligibleAccount]:
     """Every user with stored Libre credentials AND an active Libre CGM
     connection, further bounded to accounts with an active desk device OR a
     successful login within the last 7 days.
+
+    `secrets_mgr` defaults to the app-wide singleton; overridable so tests
+    (and anything proving the registry repopulates from a specific durable
+    store) can inject a differently-backed SecretsManager.
     """
-    candidate_user_ids = await secrets_manager.list_libre_user_ids()
+    secrets_mgr = secrets_mgr or secrets_manager
+    candidate_user_ids = await secrets_mgr.list_libre_user_ids()
     if not candidate_user_ids:
         return []
 
@@ -88,7 +93,7 @@ async def get_eligible_accounts(db: AsyncSession) -> list[EligibleAccount]:
         if not (has_active_device or has_recent_session):
             continue
 
-        creds = await secrets_manager.get_libre_credentials(raw_user_id)
+        creds = await secrets_mgr.get_libre_credentials(raw_user_id)
         if creds is None:
             continue
         try:

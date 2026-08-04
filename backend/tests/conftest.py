@@ -81,12 +81,30 @@ async def build_sqlite_db():
     Registers the two Postgres-only SQL functions (`now()`, `gen_random_uuid()`)
     the schema's `server_default`s rely on, so unmodified production routes
     that never set those columns explicitly still work unchanged.
+
+    Creates only the tables these tests actually need, by explicit list —
+    `Base` is the *whole app's* declarative base, shared with modules (e.g.
+    models/inference.py, models/meal_log.py) that use Postgres-only types
+    like JSONB. Once anything imports one of those — e.g. test_main_lifecycle.py
+    importing app.main — an unscoped `Base.metadata.create_all()` starts
+    failing to compile against sqlite for every test that runs after it,
+    depending on file collection order. Passing `tables=` sidesteps that
+    entirely instead of depending on what has or hasn't been imported yet.
     """
     from app.database import Base
-    import app.models.user  # noqa: F401 - registers users/cgm_devices/etc.
-    import app.models.activity  # noqa: F401 - resolves User.activity_logs relationship
-    import app.models.device  # noqa: F401 - registers devices/device_pairing_codes
-    import app.models.secret  # noqa: F401 - registers encrypted_secrets
+    from app.models.user import (
+        CGMDevice, InsulinProfile, LifestyleBaseline, LoginAttempt, User, WearableDevice,
+    )
+    from app.models.activity import ActivityLog
+    from app.models.device import Device, DevicePairingCode
+    from app.models.secret import EncryptedSecret
+
+    tables = [
+        User.__table__, InsulinProfile.__table__, CGMDevice.__table__,
+        LoginAttempt.__table__, WearableDevice.__table__, LifestyleBaseline.__table__,
+        ActivityLog.__table__, Device.__table__, DevicePairingCode.__table__,
+        EncryptedSecret.__table__,
+    ]
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
@@ -96,7 +114,7 @@ async def build_sqlite_db():
         dbapi_conn.create_function("gen_random_uuid", 0, lambda: uuid.uuid4().hex)
 
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(Base.metadata.create_all, tables=tables)
 
     session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
     return engine, session_factory
