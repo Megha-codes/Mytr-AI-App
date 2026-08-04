@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from .secrets_store import MockSecretsManager, SecretsStore
+from .secrets_store import SecretsStore
 
 
 # ── FreeStyle Libre (LibreLinkUp credentials) ────────────────────────────────
@@ -38,7 +38,7 @@ class SecretsManager:
     step 7) — `MockSecretsManager` for dev/test, `KmsPostgresSecretsStore`
     for production. Which one backs the module-level `secrets_manager`
     singleton below is chosen by `SECRETS_STORE_BACKEND` (see
-    `_build_default_store`).
+    `secrets_store_config.build_secrets_store`).
 
     Secret keys follow the convention:
       "libre:{user_id}"   →  LibreCredentials
@@ -140,6 +140,7 @@ class SecretsManager:
 
 # Module-level singleton — the app-wide credential API. Backend selection
 # (MockSecretsManager vs. the durable KmsPostgresSecretsStore) is config-driven
-# — see secrets_store_config.build_secrets_store, wired in below once that
-# module exists.
-secrets_manager = SecretsManager(store=MockSecretsManager())
+# via SECRETS_STORE_BACKEND — see secrets_store_config.build_secrets_store.
+from .secrets_store_config import build_secrets_store  # noqa: E402
+
+secrets_manager = SecretsManager(store=build_secrets_store())
