@@ -9,6 +9,10 @@ from ...core.config import settings
 # module is an intentional duplicate of the desk-device repo's copy — keep both
 # in sync.
 from ..libre_timestamp import libre_timestamp_to_epoch
+# Region list, headers, and raw HTTP calls are shared with LibreIngestionService
+# (the 24/7 poller, architecture-v3.md §4.3) so there is exactly one copy of
+# the request mechanics to keep correct.
+from .libre_client import authenticate_any_region, get_connections, get_graph_data
 
 _TREND_MAP = {
     1: ("FALLING_FAST",  "↓↓"),
@@ -17,16 +21,6 @@ _TREND_MAP = {
     4: ("RISING",        "↑"),
     5: ("RISING_FAST",   "↑↑"),
 }
-
-_LIBRE_BASES = [
-    "https://api.libreview.io",      # US / Global
-    "https://api-eu.libreview.io",   # Europe
-    "https://api-de.libreview.io",   # Germany
-    "https://api-jp.libreview.io",   # Japan
-    "https://api-au.libreview.io",   # Australia
-    "https://api-ae.libreview.io",   # Middle East
-]
-_LLU_HEADERS = {"product": "llu.android", "version": "4.7.0"}
 
 
 class LibreServiceError(Exception):
@@ -99,7 +93,7 @@ class LibreCGMService(BaseCGMService):
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 # Try each region until one works
-                auth_data = await self._authenticate_any_region(client, email, password)
+                auth_data = await authenticate_any_region(client, email, password)
                 if not auth_data:
                     return LibreValidationResult(
                         success=False,
@@ -107,7 +101,7 @@ class LibreCGMService(BaseCGMService):
                     )
 
                 token, region_base = auth_data
-                connections = await self._get_connections(client, region_base, token)
+                connections = await get_connections(client, region_base, token)
 
             if not connections:
                 return LibreValidationResult(
@@ -190,7 +184,7 @@ class LibreCGMService(BaseCGMService):
         cached = self._sessions.get(user_id)
         if cached is not None:
             return cached
-        auth = await self._authenticate_any_region(client, email, password)
+        auth = await authenticate_any_region(client, email, password)
         if auth is None:
             raise LibreServiceError(
                 "LibreLinkUp login failed (invalid credentials or unsupported region)"
@@ -201,42 +195,11 @@ class LibreCGMService(BaseCGMService):
     async def _graph_readings(
         self, client: httpx.AsyncClient, region_base: str, token: str
     ) -> list:
-        connections = await self._get_connections(client, region_base, token)
+        connections = await get_connections(client, region_base, token)
         if not connections:
             raise LibreServiceError("No LibreLinkUp connections (sharing not enabled)")
         patient_id = connections[0]["patientId"]
-        graph_resp = await client.get(
-            f"{region_base}/llu/connections/{patient_id}/graph",
-            headers={**_LLU_HEADERS, "Authorization": f"Bearer {token}"},
-        )
-        graph_resp.raise_for_status()
-        return graph_resp.json()["data"]["graphData"]
-
-    async def _authenticate_any_region(
-        self, client: httpx.AsyncClient, email: str, password: str
-    ) -> Optional[tuple[str, str]]:
-        for base in _LIBRE_BASES:
-            try:
-                resp = await client.post(
-                    f"{base}/llu/auth/login",
-                    json={"email": email, "password": password},
-                    headers=_LLU_HEADERS,
-                )
-                if resp.status_code == 200:
-                    return resp.json()["data"]["authTicket"]["token"], base
-            except Exception:
-                continue
-        return None
-
-    async def _get_connections(
-        self, client: httpx.AsyncClient, base: str, token: str
-    ) -> list:
-        resp = await client.get(
-            f"{base}/llu/connections",
-            headers={**_LLU_HEADERS, "Authorization": f"Bearer {token}"},
-        )
-        resp.raise_for_status()
-        return resp.json().get("data", [])
+        return await get_graph_data(client, region_base, token, patient_id)
 
     def _find_closest_reading(
         self,
