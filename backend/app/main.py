@@ -1,3 +1,6 @@
+import asyncio
+import contextlib
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .api.activity import router as activity_router
@@ -16,6 +19,7 @@ from .api.coach import router as coach_router
 from .api.reports import router as reports_router
 from .api.websockets import glucose_stream, status_websocket
 from .timescale_database import init_timescale_schema
+from .services.cgm.libre_ingestion_service import LibreIngestionService
 
 app = FastAPI(
     title="Mytr.AI",
@@ -23,10 +27,25 @@ app = FastAPI(
     version="1.0.0",
 )
 
+# The shared Libre poller (architecture-v3.md §4.3): one background task per
+# distinct Libre account, running independent of any client connection.
+libre_ingestion_service = LibreIngestionService()
+
 
 @app.on_event("startup")
 async def startup() -> None:
     await init_timescale_schema()
+    app.state.libre_ingestion_task = asyncio.create_task(libre_ingestion_service.run_forever())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await libre_ingestion_service.stop()
+    task = getattr(app.state, "libre_ingestion_task", None)
+    if task is not None:
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
 
 # CORS middleware for Flutter frontend communication
 app.add_middleware(
