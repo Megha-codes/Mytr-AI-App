@@ -145,6 +145,13 @@ async def _authenticate_ws(token: str, db: AsyncSession) -> User | None:
 @router.websocket("/ws/glucose")
 async def glucose_websocket(
     websocket: WebSocket,
+    # Interim fix: a query-string token is the minimal change that closes the
+    # "no auth at all" hole on this pre-existing route. It is NOT the settled
+    # pattern — docs/architecture-v3.md §2.6 specifies the token must travel
+    # in the Sec-WebSocket-Protocol header instead, because query strings land
+    # in access logs. Do not copy this query-param approach onto the new
+    # /ws/app/stream or /ws/device/stream endpoints; those should go straight
+    # to the header-based scheme from the start.
     token: str = Query(...),
     db: AsyncSession = Depends(get_db)
 ):
