@@ -86,6 +86,7 @@ async def build_sqlite_db():
     import app.models.user  # noqa: F401 - registers users/cgm_devices/etc.
     import app.models.activity  # noqa: F401 - resolves User.activity_logs relationship
     import app.models.device  # noqa: F401 - registers devices/device_pairing_codes
+    import app.models.secret  # noqa: F401 - registers encrypted_secrets
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
