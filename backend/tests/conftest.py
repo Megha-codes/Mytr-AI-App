@@ -46,6 +46,34 @@ def _sqlite_safe_bind_processor(self, dialect):
 
 PG_UUID.bind_processor = _sqlite_safe_bind_processor
 
+# SQLite has no native tz-aware datetime storage, so `DateTime(timezone=True)`
+# columns round-trip as naive on sqlite even though Postgres/asyncpg (real
+# TIMESTAMPTZ) always returns tz-aware UTC datetimes. Every value written
+# through this app is already UTC (there is no other timezone in play at the
+# storage layer), so re-attaching UTC on read makes sqlite match Postgres's
+# actual behavior instead of introducing a naive/aware split that doesn't
+# exist against the real database.
+from sqlalchemy.dialects.sqlite.base import DATETIME as _SQLiteDATETIME
+
+_orig_datetime_result_processor = _SQLiteDATETIME.result_processor
+
+
+def _tz_aware_result_processor(self, dialect, coltype):
+    processor = _orig_datetime_result_processor(self, dialect, coltype)
+    if processor is None or not self.timezone:
+        return processor
+
+    def process(value):
+        result = processor(value)
+        if result is not None and result.tzinfo is None:
+            result = result.replace(tzinfo=timezone.utc)
+        return result
+
+    return process
+
+
+_SQLiteDATETIME.result_processor = _tz_aware_result_processor
+
 
 async def build_sqlite_db():
     """In-memory SQLite standing in for Postgres in route-level tests.
@@ -55,7 +83,9 @@ async def build_sqlite_db():
     that never set those columns explicitly still work unchanged.
     """
     from app.database import Base
+    import app.models.user  # noqa: F401 - registers users/cgm_devices/etc.
     import app.models.activity  # noqa: F401 - resolves User.activity_logs relationship
+    import app.models.device  # noqa: F401 - registers devices/device_pairing_codes
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
 
@@ -71,7 +101,7 @@ async def build_sqlite_db():
     return engine, session_factory
 
 
-async def make_user(session_factory, email: str):
+async def make_user(session_factory, email: str, token_version: int = 0):
     from app.models.user import User
 
     user = User(
@@ -80,7 +110,7 @@ async def make_user(session_factory, email: str):
         password_hash="x",
         email_verified=True,
         created_at=datetime.now(timezone.utc),
-        token_version=0,
+        token_version=token_version,
     )
     async with session_factory() as session:
         session.add(user)

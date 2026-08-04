@@ -25,6 +25,10 @@ class User(Base):
     # (used by "log out of all devices", password change, and account deletion).
     # Access/refresh tokens carry a `tv` claim that must match this value.
     token_version = Column(Integer, nullable=False, server_default=text("0"))
+    # IANA zone name, e.g. "Asia/Kolkata". Written at onboarding from the
+    # device locale and on every profile save; resolves LibreLinkUp's naive
+    # timestamps per-user instead of the single global LIBRE_ACCOUNT_TIMEZONE.
+    timezone = Column(String, nullable=False, server_default=text("'UTC'"))
 
     insulin_profiles = relationship("InsulinProfile", back_populates="user")
     cgm_devices = relationship("CGMDevice", back_populates="user")
