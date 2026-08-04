@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request, Header
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, delete
+from sqlalchemy import select, func, delete, update
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime, timedelta
@@ -10,6 +10,7 @@ from collections import defaultdict
 
 from ..database import get_db
 from ..models.user import User, LoginAttempt
+from ..models.device import Device
 from ..core.security import (
     verify_password,
     get_password_hash,
@@ -339,8 +340,15 @@ async def logout_all_devices(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Revoke every access/refresh token issued for this account on all devices.
-    The caller's own token is invalidated too, so the client must sign in again."""
+    """Revoke every access/refresh token issued for this account on all
+    sessions AND every paired desk device (architecture-v3.md §2.1).
+    The caller's own token is invalidated too, so the client must sign in
+    again."""
     current_user.token_version = (current_user.token_version or 0) + 1
+    await db.execute(
+        update(Device)
+        .where(Device.user_id == current_user.id, Device.revoked_at.is_(None))
+        .values(token_version=Device.token_version + 1)
+    )
     await db.commit()
     return {"message": "Signed out of all devices."}
