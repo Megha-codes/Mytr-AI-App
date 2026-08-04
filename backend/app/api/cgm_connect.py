@@ -8,9 +8,10 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
-from ..models.user import CGMDevice
+from ..models.user import CGMDevice, User
 from ..core.encryption import encrypt
 from ..core.secrets_manager import secrets_manager
+from .auth import get_current_user
 
 router = APIRouter()
 
@@ -73,11 +74,12 @@ class DeviceMetadata(BaseModel):
 @router.post("/cgm/connect/libre", response_model=ConnectionResult)
 async def connect_libre(
     request: LibreConnectRequest,
-    user_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    user_id = current_user.id
     check_rate_limit(user_id)
-    
+
     from ..services.cgm.libre_service import LibreCGMService
     libre_service = LibreCGMService()
     validation = await libre_service.validate_credentials(request.email, request.password)
@@ -99,7 +101,7 @@ async def connect_libre(
 
     device_type = f"LIBRE_{validation.sensor_generation}"
     expiry_date = datetime.fromisoformat(validation.sensor_expiry_date) if validation.sensor_expiry_date else None
-    
+
     device = await _register_cgm_device(
         db=db,
         user_id=user_id,
@@ -122,12 +124,12 @@ async def connect_libre(
 
 @router.post("/cgm/connect/manual", response_model=ConnectionResult)
 async def connect_manual(
-    user_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     device = await _register_cgm_device(
         db=db,
-        user_id=user_id,
+        user_id=current_user.id,
         device_type="MANUAL",
         is_continuous=False,
         supports_trend=False,
@@ -144,12 +146,12 @@ async def connect_manual(
 
 @router.get("/cgm/devices", response_model=List[DeviceMetadata])
 async def list_devices(
-    user_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         select(CGMDevice).where(
-            CGMDevice.user_id == user_id,
+            CGMDevice.user_id == current_user.id,
             CGMDevice.deleted_at == None
         )
     )
@@ -168,13 +170,13 @@ async def list_devices(
 @router.delete("/cgm/devices/{device_id}")
 async def disconnect_device(
     device_id: UUID,
-    user_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
         select(CGMDevice).where(
             CGMDevice.id == device_id,
-            CGMDevice.user_id == user_id
+            CGMDevice.user_id == current_user.id
         )
     )
     device = result.scalar_one_or_none()
@@ -183,7 +185,7 @@ async def disconnect_device(
 
     # Wipe Secrets Manager
     base_type = device.device_type.split('_')[0].lower()
-    await secrets_manager.delete_credentials(str(user_id), base_type)
+    await secrets_manager.delete_credentials(str(current_user.id), base_type)
 
     # Soft-delete row
     device.deleted_at = datetime.utcnow()
@@ -195,13 +197,13 @@ async def disconnect_device(
 @router.post("/cgm/reconnect/{device_type}", response_model=ConnectionResult)
 async def reconnect_device(
     device_type: str,
-    user_id: UUID,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     # This would involve re-validating stored credentials
     # For now, we'll just return a success if we have credentials
     if "LIBRE" in device_type:
-        creds = await secrets_manager.get_libre_credentials(str(user_id))
+        creds = await secrets_manager.get_libre_credentials(str(current_user.id))
         if creds:
             return ConnectionResult(connected=True, device_type=device_type)
 

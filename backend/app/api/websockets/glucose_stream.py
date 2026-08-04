@@ -1,4 +1,4 @@
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict
 import asyncio
@@ -7,7 +7,8 @@ from datetime import datetime
 
 from app.database import get_db
 from app.services.cgm.factory import cgm_service_factory
-from app.models.user import CGMDevice, InsulinProfile
+from app.models.user import CGMDevice, InsulinProfile, User
+from app.core.security import decode_token_payload, TOKEN_TYPE_ACCESS
 from sqlalchemy import select, text
 
 router = APIRouter()
@@ -129,12 +130,30 @@ def _check_alerts(value: int, user_id: str, db: AsyncSession) -> list[dict]:
     return alerts
 
 
-@router.websocket("/ws/glucose/{user_id}")
+async def _authenticate_ws(token: str, db: AsyncSession) -> User | None:
+    payload = decode_token_payload(token, expected_type=TOKEN_TYPE_ACCESS)
+    if payload is None:
+        return None
+
+    result = await db.execute(select(User).where(User.id == payload.get("sub")))
+    user = result.scalar_one_or_none()
+    if not user or payload.get("tv", 0) != (user.token_version or 0):
+        return None
+    return user
+
+
+@router.websocket("/ws/glucose")
 async def glucose_websocket(
     websocket: WebSocket,
-    user_id: str,
+    token: str = Query(...),
     db: AsyncSession = Depends(get_db)
 ):
+    authenticated_user = await _authenticate_ws(token, db)
+    if authenticated_user is None:
+        await websocket.close(code=1008)
+        return
+
+    user_id = str(authenticated_user.id)
     await manager.connect(user_id, websocket)
 
     try:

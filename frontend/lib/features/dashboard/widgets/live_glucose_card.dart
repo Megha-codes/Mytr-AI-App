@@ -7,13 +7,13 @@ import '../../../core/app_colors.dart';
 import '../../../core/widgets/meta_sync_card.dart';
 
 class LiveGlucoseCard extends ConsumerWidget {
-  const LiveGlucoseCard({super.key, required this.userId});
+  const LiveGlucoseCard({super.key, required this.accessToken});
 
-  final String userId;
+  final String accessToken;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final glucoseAsync = ref.watch(glucoseStreamProvider(userId));
+    final glucoseAsync = ref.watch(glucoseStreamProvider(accessToken));
 
     return glucoseAsync.when(
       data: (reading) => _GlucoseCardContent(reading: reading),

@@ -13,9 +13,11 @@ class GlucoseStreamService {
   GlucoseStreamService({String? baseWsUrl})
       : baseWsUrl = baseWsUrl ?? AppConfig.wsBaseUrl;
 
-  Stream<GlucoseReading> connect(String userId) {
+  Stream<GlucoseReading> connect(String accessToken) {
     _channel = WebSocketChannel.connect(
-      Uri.parse('$baseWsUrl/ws/glucose/$userId'),
+      Uri.parse('$baseWsUrl/ws/glucose').replace(
+        queryParameters: {'token': accessToken},
+      ),
     );
 
     return _channel!.stream
@@ -36,10 +38,10 @@ final glucoseStreamServiceProvider = Provider<GlucoseStreamService>((ref) {
   return GlucoseStreamService();
 });
 
-// StreamProvider.family — pass userId at the call site
+// StreamProvider.family — pass the caller's access token at the call site
 final glucoseStreamProvider =
-    StreamProvider.autoDispose.family<GlucoseReading, String>((ref, userId) {
+    StreamProvider.autoDispose.family<GlucoseReading, String>((ref, accessToken) {
   final service = ref.watch(glucoseStreamServiceProvider);
   ref.onDispose(service.disconnect);
-  return service.connect(userId);
+  return service.connect(accessToken);
 });
