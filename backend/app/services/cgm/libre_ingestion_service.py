@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ...database import AsyncSessionLocal
 from ...models.glucose_reading import GlucoseReadingModel
 from ...models.user import CGMDevice
+from ...services.realtime.fanout_hub import FanoutHub, fanout_hub as default_fanout_hub
 from ...timescale_database import TimescaleSessionLocal
 from ..libre_timestamp import libre_timestamp_to_epoch
 from .libre_account_registry import EligibleAccount, get_eligible_accounts, group_by_credential
@@ -61,11 +62,13 @@ class LibreIngestionService:
         timescale_session_factory=None,
         poll_interval_seconds: float = POLL_INTERVAL_SECONDS,
         registry_refresh_seconds: float = REGISTRY_REFRESH_SECONDS,
+        fanout_hub: Optional[FanoutHub] = None,
     ) -> None:
         self._db_session_factory = db_session_factory or AsyncSessionLocal
         self._timescale_session_factory = timescale_session_factory or TimescaleSessionLocal
         self._poll_interval_seconds = poll_interval_seconds
         self._registry_refresh_seconds = registry_refresh_seconds
+        self._fanout_hub = fanout_hub or default_fanout_hub
 
         # In-process cache: email -> (token, region_base). The durable half
         # of this (region_base surviving a restart) lives in
@@ -213,13 +216,12 @@ class LibreIngestionService:
             recorded_at = datetime.fromtimestamp(epoch, tz=timezone.utc)
             trend_code = item.get("TrendArrow", 3)
             trend, trend_arrow = _TREND_MAP.get(trend_code, ("STABLE", "→"))
-            value = item.get("ValueInMgPerDl") or item.get("Value", 0)
-
+            value = int(item.get("ValueInMgPerDl") or item.get("Value", 0))
             stmt = (
                 insert(GlucoseReadingModel)
                 .values(
                     user_id=account.user_id,
-                    value_mgdl=int(value),
+                    value_mgdl=value,
                     trend=trend,
                     trend_arrow=trend_arrow,
                     device_type="LIBRE",
@@ -232,9 +234,31 @@ class LibreIngestionService:
                     index_elements=["user_id", "sensor_id", "recorded_at"],
                     index_where=text("sensor_id IS NOT NULL"),
                 )
+                # `rowcount` on an ON CONFLICT DO NOTHING insert isn't a
+                # reliable "did this actually insert" signal across drivers
+                # once a server_default column (id) is involved — RETURNING
+                # is: it yields a row iff the insert wasn't skipped, on both
+                # Postgres and the sqlite test backend.
+                .returning(GlucoseReadingModel.id)
             )
             result = await ts_db.execute(stmt)
-            written += result.rowcount or 0
+            newly_inserted = result.first() is not None
+            written += int(newly_inserted)
+
+            # Only publish for readings actually written this cycle — the
+            # poller re-fetches overlapping graph windows every poll, so
+            # without this check every already-seen reading would be
+            # re-published (and re-delivered to every live subscriber) on
+            # every single poll interval.
+            if newly_inserted:
+                self._fanout_hub.publish_glucose_reading(
+                    account.user_id, recorded_at=recorded_at, mgdl=value,
+                    trend=trend, trend_arrow=trend_arrow, sensor_id=sensor_id,
+                    source="LIBRE",
+                )
+                self._fanout_hub.publish_glucose_state(
+                    account.user_id, state="LIVE", since=recorded_at,
+                )
         return written
 
     # ── Durable region persistence (§4.3 step 3) ────────────────────────────
