@@ -101,6 +101,27 @@ async def build_sqlite_db():
     return engine, session_factory
 
 
+async def build_sqlite_timescale_db():
+    """In-memory SQLite standing in for TimescaleDB — glucose_readings lives
+    on a separate `TimescaleBase` (see app/timescale_database.py), so it
+    needs its own engine/session, not `build_sqlite_db`'s."""
+    from app.timescale_database import TimescaleBase
+    import app.models.glucose_reading  # noqa: F401 - registers glucose_readings
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+
+    @event.listens_for(engine.sync_engine, "connect")
+    def _register_pg_shims(dbapi_conn, _):
+        dbapi_conn.create_function("now", 0, lambda: datetime.now(timezone.utc).isoformat())
+        dbapi_conn.create_function("gen_random_uuid", 0, lambda: uuid.uuid4().hex)
+
+    async with engine.begin() as conn:
+        await conn.run_sync(TimescaleBase.metadata.create_all)
+
+    session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
+    return engine, session_factory
+
+
 async def make_user(session_factory, email: str, token_version: int = 0):
     from app.models.user import User
 

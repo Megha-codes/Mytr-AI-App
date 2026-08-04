@@ -69,6 +69,10 @@ class CGMDevice(Base):
     sensor_status = Column(String)      # 'ACTIVE', 'EXPIRED', 'WARMING_UP', etc.
     sensor_expiry_date = Column(DateTime)
     last_sync_at = Column(DateTime)
+    # Durable cache of the LibreView regional host this account authenticates
+    # against (e.g. "https://api-eu.libreview.io"), so the shared poller
+    # doesn't re-scan all six regions after every restart.
+    region_base = Column(String)
 
     user = relationship("User", back_populates="cgm_devices")
 

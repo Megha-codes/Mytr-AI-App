@@ -48,6 +48,21 @@ async def init_timescale_schema() -> None:
             CREATE INDEX IF NOT EXISTS idx_glucose_readings_user_recorded
             ON glucose_readings (user_id, recorded_at DESC)
         """))
+        # Architecture v3 §1.3: sensor_id/source + the dedup index the shared
+        # poller's ON CONFLICT DO NOTHING ingestion relies on. Mirrors
+        # migrations/011_glucose_dedup_and_region.sql — this table is
+        # provisioned here on boot rather than through that migration path,
+        # so both must stay in sync.
+        await conn.execute(text("""
+            ALTER TABLE glucose_readings
+              ADD COLUMN IF NOT EXISTS sensor_id TEXT,
+              ADD COLUMN IF NOT EXISTS source    TEXT NOT NULL DEFAULT 'LIBRE'
+        """))
+        await conn.execute(text("""
+            CREATE UNIQUE INDEX IF NOT EXISTS glucose_readings_dedup_idx
+            ON glucose_readings (user_id, sensor_id, recorded_at)
+            WHERE sensor_id IS NOT NULL
+        """))
 
     try:
         async with timescale_engine.begin() as conn:
