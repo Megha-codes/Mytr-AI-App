@@ -60,6 +60,15 @@ class MockSecretsManager:
     ) -> Optional[LibreCredentials]:
         return self._store.get(f"libre:{user_id}")
 
+    async def list_libre_user_ids(self) -> list[str]:
+        """user_ids with stored Libre credentials — the candidate pool for
+        the shared poller's account registry (architecture-v3.md §3.2)."""
+        return [
+            key.split(":", 1)[1]
+            for key in self._store
+            if key.startswith("libre:")
+        ]
+
     # Fitbit ─────────────────────────────────────────────────────────────────
 
     async def store_fitbit_tokens(
