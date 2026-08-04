@@ -7,6 +7,7 @@ from .api.account import router as account_router
 from .api.inference import router as inference_router
 from .api.nutrition import router as nutrition_router
 from .api.cgm_connect import router as cgm_connect_router
+from .api.devices import router as devices_router
 from .api.user import router as user_router
 from .api.glucose import router as glucose_router
 from .api.dashboard import router as dashboard_router
@@ -45,6 +46,7 @@ app.include_router(user_router, prefix="/api/v1/user", tags=["user"])
 app.include_router(inference_router, prefix="/api/v1", tags=["inference"])
 app.include_router(nutrition_router, prefix="/api/v1/nutrition", tags=["nutrition"])
 app.include_router(cgm_connect_router, prefix="/api/v1", tags=["cgm"])
+app.include_router(devices_router, prefix="/api/v1", tags=["devices"])
 app.include_router(glucose_router, prefix="/api/v1", tags=["glucose"])
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
 app.include_router(achievements_router, prefix="/api/v1/achievements", tags=["achievements"])
