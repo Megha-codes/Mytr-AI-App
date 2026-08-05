@@ -6,8 +6,9 @@ endpoint here takes a `user_id` parameter — the token decides.
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,6 +26,7 @@ from ..timescale_database import TimescaleSessionLocal
 router = APIRouter()
 
 GLUCOSE_RANGE_WINDOW_HOURS = 24
+DEFAULT_RANGE_MAX_POINTS = 720
 
 
 async def _load_user(db: AsyncSession, user_id: str) -> User:
@@ -144,3 +146,69 @@ async def get_device_snapshot(
     # change on every call and defeat 304 caching entirely.
     etag_source = {k: v for k, v in payload.items() if k != "server_time"}
     return etag_json_response(request, payload, etag_source=etag_source)
+
+
+@router.get("/device/glucose/latest")
+async def get_device_glucose_latest(
+    request: Request,
+    current: tuple[Device, str] = Depends(get_current_device),
+    db: AsyncSession = Depends(get_db),
+):
+    _device, user_id = current
+    cgm_device = await _load_active_cgm_device(db, user_id)
+
+    now = datetime.now(timezone.utc)
+    async with TimescaleSessionLocal() as ts:
+        result = await ts.execute(
+            select(GlucoseReadingModel)
+            .where(GlucoseReadingModel.user_id == user_id)
+            .order_by(GlucoseReadingModel.recorded_at.desc())
+            .limit(1)
+        )
+        latest_reading = result.scalars().first()
+
+    # `state` is load-bearing (§2.4) — the device must always be able to
+    # render a distinct screen for it, even with zero readings ever
+    # recorded, so this is always 200 with the glucose fields null rather
+    # than 404.
+    payload = (
+        _reading_data(latest_reading)
+        if latest_reading
+        else {"ts": None, "mgdl": None, "trend": None, "trend_arrow": None, "sensor_id": None, "source": None}
+    )
+    payload["state"] = resolve_glucose_state(cgm_device, latest_reading, now=now)
+    return etag_json_response(request, payload)
+
+
+@router.get("/device/glucose/range")
+async def get_device_glucose_range(
+    request: Request,
+    from_: int = Query(..., alias="from"),
+    to: Optional[int] = None,
+    max_points: int = DEFAULT_RANGE_MAX_POINTS,
+    current: tuple[Device, str] = Depends(get_current_device),
+):
+    _device, user_id = current
+    from_dt = datetime.fromtimestamp(from_, tz=timezone.utc)
+    to_dt = datetime.fromtimestamp(to, tz=timezone.utc) if to is not None else datetime.now(timezone.utc)
+
+    async with TimescaleSessionLocal() as ts:
+        result = await ts.execute(
+            select(GlucoseReadingModel)
+            .where(
+                GlucoseReadingModel.user_id == user_id,
+                GlucoseReadingModel.recorded_at >= from_dt,
+                GlucoseReadingModel.recorded_at <= to_dt,
+            )
+            # Newest-first so truncation (when the range holds more than
+            # max_points) drops the oldest, least-relevant-to-a-live-graph
+            # points rather than the most recent ones.
+            .order_by(GlucoseReadingModel.recorded_at.desc())
+            .limit(max_points + 1)
+        )
+        rows = result.scalars().all()
+
+    truncated = len(rows) > max_points
+    rows = list(reversed(rows[:max_points]))  # back to ascending by ts
+    payload = {"readings": [_reading_data(r) for r in rows], "truncated": truncated}
+    return etag_json_response(request, payload)
