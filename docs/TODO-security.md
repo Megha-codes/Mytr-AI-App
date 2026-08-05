@@ -27,14 +27,12 @@ the data.
 **Definition of done:** production config uses a KMS whose master key is not resident on the
 application VPS; a raw DB read shows only ciphertext; documented in the deploy runbook.
 
-## 2. WebSocket token in query string (MEDIUM — interim from fix/auth-holes)
+## 2. WebSocket token in query string (RESOLVED)
 
-The interim glucose websocket auth uses `?token=`, which leaks into access/proxy logs. Per
-architecture-v3.md §2.6, the v3 endpoints (`/ws/app/stream`, `/ws/device/stream`) MUST carry
-the token in `Sec-WebSocket-Protocol` instead. Do not propagate the query-string pattern.
-
-**Definition of done:** v3 websocket endpoints authenticate via header; the old `?token=` route
-is removed once the app has migrated to `/ws/app/stream`.
+~~The interim glucose websocket auth uses `?token=`, which leaks into access/proxy logs.~~
+`/ws/app/stream` and `/ws/device/stream` (architecture-v3.md §2.6) now authenticate via
+`Sec-WebSocket-Protocol` (`app/services/realtime/ws_auth.py`), and the old `?token=`
+`/ws/glucose` route is deleted (`app/api/websockets/glucose_stream.py`).
 
 ## 3. Pre-real-users security review (MEDIUM)
 

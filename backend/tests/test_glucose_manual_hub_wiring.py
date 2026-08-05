@@ -75,37 +75,3 @@ async def test_manual_and_libre_readings_share_the_same_envelope_shape(monkeypat
 
     await db_engine.dispose()
     await ts_engine.dispose()
-
-
-async def test_manual_entry_still_pushes_through_the_legacy_manager(monkeypatch):
-    """The old interim /ws/glucose push must keep working unchanged until
-    it's retired — this wiring only adds the hub publish, it doesn't
-    replace the existing one."""
-    db_engine, db_session_factory = await build_sqlite_db()
-    ts_engine, ts_session_factory = await build_sqlite_timescale_db()
-    user = await make_user(db_session_factory, "legacy-push@example.com")
-
-    hub = FanoutHub()
-    monkeypatch.setattr(glucose_module, "fanout_hub", hub)
-    monkeypatch.setattr(glucose_module, "TimescaleSessionLocal", ts_session_factory)
-
-    sent = {}
-
-    async def _fake_send_reading(user_id, reading):
-        sent["user_id"] = user_id
-        sent["reading"] = reading
-
-    monkeypatch.setattr(glucose_module.manager, "send_reading", _fake_send_reading)
-
-    async with db_session_factory() as db:
-        await log_manual_glucose(
-            ManualGlucoseRequest(value_mgdl=99, timestamp=datetime.now(timezone.utc)),
-            current_user=user,
-            db=db,
-        )
-
-    assert sent["user_id"] == str(user.id)
-    assert sent["reading"]["value"] == 99
-
-    await db_engine.dispose()
-    await ts_engine.dispose()
