@@ -283,6 +283,28 @@ class CGMState {
     GlucoseTrend.falling => '↓',
     GlucoseTrend.rapidlyFalling => '↓↓',
   };
+
+  CGMState copyWith({
+    int? currentGlucose,
+    GlucoseTrend? trend,
+    int? lastUpdatedMinutesAgo,
+    GlucoseStatus? currentStatus,
+    List<GlucosePoint>? last24Hours,
+    double? timeInRange24h,
+    double? averageGlucose28Days,
+    TIRBreakdown? timeInRangeBreakdown,
+  }) {
+    return CGMState(
+      currentGlucose: currentGlucose ?? this.currentGlucose,
+      trend: trend ?? this.trend,
+      lastUpdatedMinutesAgo: lastUpdatedMinutesAgo ?? this.lastUpdatedMinutesAgo,
+      currentStatus: currentStatus ?? this.currentStatus,
+      last24Hours: last24Hours ?? this.last24Hours,
+      timeInRange24h: timeInRange24h ?? this.timeInRange24h,
+      averageGlucose28Days: averageGlucose28Days ?? this.averageGlucose28Days,
+      timeInRangeBreakdown: timeInRangeBreakdown ?? this.timeInRangeBreakdown,
+    );
+  }
 }
 
 @HiveType(typeId: 18)

@@ -42,9 +42,9 @@ CGMState _parseCgm(Map<String, dynamic> g) {
 
   return CGMState(
     currentGlucose: rawValue ?? 0,
-    trend: _parseTrend(trendStr),
+    trend: parseGlucoseTrend(trendStr),
     lastUpdatedMinutesAgo: _minutesAgo(lastUpdatedStr),
-    currentStatus: _parseStatus(rawValue),
+    currentStatus: parseGlucoseStatus(rawValue),
     // TIR is 0.0–1.0 from backend; display expects 0–100
     timeInRange24h: tirRaw != null ? tirRaw * 100 : 0.0,
     averageGlucose28Days: 0.0,
@@ -92,18 +92,26 @@ List<Challenge> _parseChallenges(List<dynamic> raw) {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-GlucoseTrend _parseTrend(String? trend) {
+// Public (not `_`-prefixed): shared with the /ws/app/stream live handler in
+// glucose_provider.dart, which needs to classify a pushed glucose.reading
+// frame identically to how a REST-fetched dashboard reading is classified —
+// otherwise the live badge and the REST-derived value could disagree.
+GlucoseTrend parseGlucoseTrend(String? trend) {
   switch (trend) {
+    case 'RISING_FAST':
+      return GlucoseTrend.rapidlyRising;
     case 'RISING':
       return GlucoseTrend.rising;
     case 'FALLING':
       return GlucoseTrend.falling;
+    case 'FALLING_FAST':
+      return GlucoseTrend.rapidlyFalling;
     default:
       return GlucoseTrend.stable;
   }
 }
 
-GlucoseStatus _parseStatus(int? value) {
+GlucoseStatus parseGlucoseStatus(int? value) {
   if (value == null) return GlucoseStatus.inRange;
   if (value < 70) return GlucoseStatus.low;
   if (value > 250) return GlucoseStatus.veryHigh;

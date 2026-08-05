@@ -321,6 +321,8 @@ class ProfileScreen extends ConsumerWidget {
           const ProfileSectionHeader(title: 'Settings'),
           ProfileRow(title: 'Account & security', onTap: () => context.push('/profile/account')),
           const Divider(height: 1),
+          ProfileRow(title: 'Desk display', onTap: () => context.push('/profile/desk-device')),
+          const Divider(height: 1),
           ProfileRow(title: 'Notifications', onTap: () => context.push('/profile/notifications')),
           const Divider(height: 1),
           ProfileRow(title: 'Units', onTap: () => context.push('/profile/units')),

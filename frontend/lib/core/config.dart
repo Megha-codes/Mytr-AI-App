@@ -20,7 +20,7 @@ class AppConfig {
   /// Server origin with a ws/wss scheme. WebSocket routes are mounted at the
   /// server root (`/ws/...`), NOT under `/api/v1`, so the version prefix is
   /// stripped here. Call sites append the concrete path, e.g.
-  /// `'$wsBaseUrl/ws/glucose/$userId'`.
+  /// `'$wsBaseUrl/ws/app/stream'`.
   static String get wsBaseUrl {
     final origin = apiBaseUrl.replaceFirst(RegExp(r'/api/v\d+/?$'), '');
     return origin
