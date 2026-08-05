@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from datetime import date as date_type, datetime, timezone
 from typing import Optional
-from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import text
@@ -23,7 +22,7 @@ from ..schemas.health import (
     HealthSamplesResponse,
 )
 from ..services.health.activity_projection import recompute_activity_log_projection
-from ..services.health.daily_rollup import compute_daily_rollup
+from ..services.health.daily_rollup import compute_daily_rollup, local_date
 from ..services.realtime.envelope import FRAME_TYPE_HEALTH_UPDATED
 from ..services.realtime.fanout_hub import fanout_hub
 from .auth import get_current_user
@@ -35,16 +34,6 @@ def _insert_builder(dialect_name: str):
     # Same dialect switch as LibreIngestionService — production runs
     # Postgres, sqlite is the test-only stand-in.
     return sqlite.insert if dialect_name == "sqlite" else postgresql.insert
-
-
-def _local_date(dt: datetime, tz_name: str) -> date_type:
-    try:
-        zone = ZoneInfo(tz_name)
-    except (ZoneInfoNotFoundError, ValueError):
-        zone = timezone.utc
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(zone).date()
 
 
 @router.post("/health/samples", response_model=HealthSamplesResponse)
@@ -88,7 +77,7 @@ async def ingest_health_samples(
     accepted = len(inserted)
     duplicates = len(rows) - accepted
 
-    affected_dates = {_local_date(started_at, current_user.timezone) for _, started_at in inserted}
+    affected_dates = {local_date(started_at, current_user.timezone) for _, started_at in inserted}
     for affected_date in affected_dates:
         await recompute_activity_log_projection(db, current_user.id, affected_date, current_user.timezone)
 
@@ -108,7 +97,7 @@ async def get_health_daily(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    target_date = date or _local_date(datetime.now(timezone.utc), current_user.timezone)
+    target_date = date or local_date(datetime.now(timezone.utc), current_user.timezone)
     rollup = await compute_daily_rollup(db, current_user.id, target_date, current_user.timezone)
     # Splat only the fields HealthDailyResponse declares — compute_daily_rollup
     # is metric-agnostic and may return keys (e.g. weight_kg) this fixed

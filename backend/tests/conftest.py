@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 # missing; config reads env at import).
 os.environ.setdefault("JWT_SECRET", "test-secret-not-used-anywhere-real")
 
-from sqlalchemy import event
+from sqlalchemy import event, text
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -116,6 +116,28 @@ async def build_sqlite_db():
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all, tables=tables)
+        # meal_logs (models/meal_log.py) can't join the `tables=` list above —
+        # its `food_items` column is Postgres-only JSONB, which has no sqlite
+        # compiler at all (UnsupportedCompilationError), unlike the UUID/JSON
+        # types elsewhere that at least degrade gracefully. Readers that need
+        # it use raw SQL against this hand-written, sqlite-compatible mirror
+        # of migrations/002_meal_logs.sql instead of the ORM model — see
+        # app/api/device_data.py.
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS meal_logs (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                meal_time TIMESTAMP NOT NULL,
+                food_items TEXT NOT NULL,
+                total_calories INTEGER,
+                total_carbs_g NUMERIC,
+                total_protein_g NUMERIC,
+                total_fat_g NUMERIC,
+                total_fiber_g NUMERIC,
+                glycaemic_load NUMERIC,
+                created_at TIMESTAMP
+            )
+        """))
 
     session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
     return engine, session_factory

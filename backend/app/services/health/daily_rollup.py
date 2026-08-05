@@ -40,6 +40,24 @@ def _resolve_zone(tz_name: str):
         return timezone.utc
 
 
+def local_date(dt: datetime, user_timezone: str = "UTC") -> date_type:
+    """The calendar date `dt` falls on in `user_timezone` — the "which day's
+    rollup does this instant belong to" question every day-boundary caller
+    (ingest, /health/daily, /device/snapshot) needs answered the same way."""
+    zone = _resolve_zone(user_timezone)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(zone).date()
+
+
+def local_date_bounds(target_date: date_type, user_timezone: str = "UTC") -> tuple[datetime, datetime]:
+    """UTC [start, end) instants spanning the full local day `target_date`
+    in `user_timezone`."""
+    zone = _resolve_zone(user_timezone)
+    local_midnight = datetime(target_date.year, target_date.month, target_date.day, tzinfo=zone)
+    return local_midnight.astimezone(timezone.utc), (local_midnight + timedelta(days=1)).astimezone(timezone.utc)
+
+
 async def compute_daily_rollup(
     db: AsyncSession, user_id, target_date: date_type, user_timezone: str = "UTC"
 ) -> dict:
@@ -51,10 +69,7 @@ async def compute_daily_rollup(
     steps and 'no data' are different facts"). Returns `{}` when there is no
     data at all for that day.
     """
-    zone = _resolve_zone(user_timezone)
-    local_midnight = datetime(target_date.year, target_date.month, target_date.day, tzinfo=zone)
-    range_start = local_midnight.astimezone(timezone.utc)
-    range_end = (local_midnight + timedelta(days=1)).astimezone(timezone.utc)
+    range_start, range_end = local_date_bounds(target_date, user_timezone)
 
     result = await db.execute(
         select(HealthMetric).where(
