@@ -1,14 +1,32 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../glucose/providers/manual_glucose_provider.dart';
-import '../../../core/widgets/primary_button.dart';
+import '../../providers/providers.dart';
+import '../../../../core/widgets/primary_button.dart';
 
-class ManualGlucoseEntrySheet extends ConsumerWidget {
+/// Bottom sheet for a manual (fingerstick/Accu-Chek) glucose entry.
+/// Posts through [ManualGlucoseService], which invalidates [dashboardProvider]
+/// on success so the glucose screen and card refresh with the new reading —
+/// the same store POST /glucose/manual already publishes into the fanout hub
+/// for anyone with a live /ws/app/stream connection.
+class ManualGlucoseEntrySheet extends ConsumerStatefulWidget {
   const ManualGlucoseEntrySheet({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final isSaving = ref.watch(manualGlucoseProvider).isSaving;
+  ConsumerState<ManualGlucoseEntrySheet> createState() => _ManualGlucoseEntrySheetState();
+}
+
+class _ManualGlucoseEntrySheetState extends ConsumerState<ManualGlucoseEntrySheet> {
+  static const int _minValue = 40;
+  static const int _maxValue = 400;
+
+  int _value = 100;
+  DateTime _time = DateTime.now();
+  bool _isSaving = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final isNow = DateTime.now().difference(_time).abs().inMinutes < 1;
 
     return Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
@@ -22,19 +40,29 @@ class ManualGlucoseEntrySheet extends ConsumerWidget {
             style: Theme.of(context).textTheme.titleMedium,
           ),
           const SizedBox(height: 24),
-          const _GlucoseNumberInput(unit: 'mg/dL', minValue: 40, maxValue: 400),
+          _GlucoseNumberInput(
+            value: _value,
+            unit: 'mg/dL',
+            minValue: _minValue,
+            maxValue: _maxValue,
+            onChanged: (v) => setState(() => _value = v),
+          ),
           const SizedBox(height: 16),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 24),
-            child: _ReadingTimeSelector(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: _ReadingTimeSelector(
+              time: _time,
+              isNow: isNow,
+              onPick: (picked) => setState(() => _time = picked),
+            ),
           ),
           const SizedBox(height: 24),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24),
             child: PrimaryButton(
               text: 'Log entry',
-              isLoading: isSaving,
-              onPressed: () => _save(context, ref),
+              isLoading: _isSaving,
+              onPressed: _isSaving ? null : () => _save(context),
             ),
           ),
           const SizedBox(height: 24),
@@ -43,27 +71,29 @@ class ManualGlucoseEntrySheet extends ConsumerWidget {
     );
   }
 
-  Future<void> _save(BuildContext context, WidgetRef ref) async {
-    final value = ref.read(glucoseInputProvider);
-    final time  = ref.read(readingTimeProvider);
-
-    await ref.read(manualGlucoseProvider.notifier).save(
-      valueMgdl: value,
-      timestamp: time,
-    );
-
-    final error = ref.read(manualGlucoseProvider).error;
-    if (error != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          backgroundColor: Theme.of(context).colorScheme.error,
-        ),
-      );
-      return;
+  Future<void> _save(BuildContext context) async {
+    setState(() => _isSaving = true);
+    try {
+      await ref.read(manualGlucoseProvider).logReading(
+            _value.toDouble(),
+            timestamp: _time,
+          );
+      if (context.mounted) Navigator.pop(context);
+    } catch (e) {
+      final message = e is DioException
+          ? (e.response?.data?['detail']?.toString() ?? 'Failed to save reading. Please try again.')
+          : 'Failed to save reading. Please try again.';
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Theme.of(context).colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
-
-    if (context.mounted) Navigator.pop(context);
   }
 }
 
@@ -90,30 +120,30 @@ class _SheetHandle extends StatelessWidget {
 
 // ── Large number stepper ──────────────────────────────────────────────────────
 
-class _GlucoseNumberInput extends ConsumerWidget {
+class _GlucoseNumberInput extends StatelessWidget {
   const _GlucoseNumberInput({
+    required this.value,
     required this.unit,
     required this.minValue,
     required this.maxValue,
+    required this.onChanged,
   });
 
+  final int value;
   final String unit;
-  final int    minValue;
-  final int    maxValue;
+  final int minValue;
+  final int maxValue;
+  final ValueChanged<int> onChanged;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final value = ref.watch(glucoseInputProvider);
-
+  Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         IconButton(
           icon: const Icon(Icons.remove_circle_outline),
           iconSize: 40,
-          onPressed: value > minValue
-              ? () => ref.read(glucoseInputProvider.notifier).update(value - 1)
-              : null,
+          onPressed: value > minValue ? () => onChanged(value - 1) : null,
         ),
         const SizedBox(width: 24),
         Column(
@@ -131,9 +161,7 @@ class _GlucoseNumberInput extends ConsumerWidget {
         IconButton(
           icon: const Icon(Icons.add_circle_outline),
           iconSize: 40,
-          onPressed: value < maxValue
-              ? () => ref.read(glucoseInputProvider.notifier).update(value + 1)
-              : null,
+          onPressed: value < maxValue ? () => onChanged(value + 1) : null,
         ),
       ],
     );
@@ -142,14 +170,19 @@ class _GlucoseNumberInput extends ConsumerWidget {
 
 // ── Time picker ───────────────────────────────────────────────────────────────
 
-class _ReadingTimeSelector extends ConsumerWidget {
-  const _ReadingTimeSelector();
+class _ReadingTimeSelector extends StatelessWidget {
+  const _ReadingTimeSelector({
+    required this.time,
+    required this.isNow,
+    required this.onPick,
+  });
+
+  final DateTime time;
+  final bool isNow;
+  final ValueChanged<DateTime> onPick;
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final time  = ref.watch(readingTimeProvider);
-    final isNow = DateTime.now().difference(time).abs().inMinutes < 1;
-
+  Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -162,9 +195,9 @@ class _ReadingTimeSelector extends ConsumerWidget {
               context: context,
               initialTime: TimeOfDay.fromDateTime(time),
             );
-            if (picked != null && context.mounted) {
+            if (picked != null) {
               final now = DateTime.now();
-              ref.read(readingTimeProvider.notifier).update(DateTime(
+              onPick(DateTime(
                 now.year, now.month, now.day,
                 picked.hour, picked.minute,
               ));

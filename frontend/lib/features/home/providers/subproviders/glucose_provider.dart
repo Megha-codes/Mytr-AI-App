@@ -25,10 +25,10 @@ class ManualGlucoseService {
   final Ref _ref;
   ManualGlucoseService(this._ref);
 
-  Future<void> logReading(double value) async {
+  Future<void> logReading(double value, {DateTime? timestamp}) async {
     await _ref.read(apiClientProvider).post('/glucose/manual', data: {
       'value_mgdl': value.round(),
-      'timestamp': DateTime.now().toUtc().toIso8601String(),
+      'timestamp': (timestamp ?? DateTime.now()).toUtc().toIso8601String(),
     });
     // Invalidate dashboard so glucose card and all sections refresh
     _ref.invalidate(dashboardProvider);

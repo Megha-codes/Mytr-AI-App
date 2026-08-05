@@ -9,6 +9,7 @@ import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
 import '../../providers/providers.dart';
 import '../widgets/glucose_widgets.dart';
+import '../widgets/manual_glucose_entry_sheet.dart';
 
 class GlucoseScreen extends ConsumerWidget {
   const GlucoseScreen({super.key});
@@ -51,6 +52,18 @@ class GlucoseScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _openManualEntry(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: AppTheme.backgroundWhite,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (_) => const ManualGlucoseEntrySheet(),
     );
   }
 
@@ -167,6 +180,14 @@ class GlucoseScreen extends ConsumerWidget {
               // Action Buttons
               Row(
                 children: [
+                  Expanded(
+                    child: _ActionBtn(
+                      label: 'Log Reading',
+                      color: AppTheme.brandPurpleDeep,
+                      onPressed: () => _openManualEntry(context),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
                   Expanded(
                     child: _ActionBtn(
                       label: 'Log Bolus',
