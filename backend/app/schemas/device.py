@@ -53,3 +53,10 @@ class DeviceRenameRequest(BaseModel):
 
 class DeviceTokenRefreshRequest(BaseModel):
     refresh_token: str
+
+
+class DeviceHeartbeatRequest(BaseModel):
+    firmware_version: Optional[str] = None
+    uptime_s: Optional[int] = None
+    last_reading_ts: Optional[int] = None
+    alarm_state: Optional[str] = None

@@ -5,11 +5,11 @@ endpoint here takes a `user_id` parameter — the token decides.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date as date_type, datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.device_auth import get_current_device
@@ -18,6 +18,7 @@ from ..database import get_db
 from ..models.device import Device
 from ..models.glucose_reading import GlucoseReadingModel
 from ..models.user import CGMDevice, InsulinProfile, User
+from ..schemas.device import DeviceHeartbeatRequest
 from ..services.health.daily_rollup import compute_daily_rollup, local_date, local_date_bounds
 from ..services.nutrition.meals_today import load_todays_meals, meal_label
 from ..services.realtime.glucose_state import resolve_glucose_state
@@ -212,3 +213,73 @@ async def get_device_glucose_range(
     rows = list(reversed(rows[:max_points]))  # back to ascending by ts
     payload = {"readings": [_reading_data(r) for r in rows], "truncated": truncated}
     return etag_json_response(request, payload)
+
+
+@router.get("/device/health/daily")
+async def get_device_health_daily(
+    request: Request,
+    date: Optional[date_type] = None,
+    current: tuple[Device, str] = Depends(get_current_device),
+    db: AsyncSession = Depends(get_db),
+):
+    _device, user_id = current
+    user = await _load_user(db, user_id)
+    target_date = date or local_date(datetime.now(timezone.utc), user.timezone)
+    rollup = await compute_daily_rollup(db, user_id, target_date, user.timezone)
+
+    payload = {
+        "date": target_date.isoformat(),
+        "steps": rollup.get("steps"),
+        "active_energy_kcal": rollup.get("active_energy_kcal"),
+        "heart_rate": rollup.get("heart_rate"),
+        "resting_heart_rate": rollup.get("resting_heart_rate"),
+        "sleep_minutes": rollup.get("sleep_minutes"),
+        "updated_at": rollup["updated_at"].isoformat() if rollup.get("updated_at") else None,
+    }
+    return etag_json_response(request, payload)
+
+
+@router.get("/device/calories/daily")
+async def get_device_calories_daily(
+    request: Request,
+    date: Optional[date_type] = None,
+    current: tuple[Device, str] = Depends(get_current_device),
+    db: AsyncSession = Depends(get_db),
+):
+    _device, user_id = current
+    user = await _load_user(db, user_id)
+    target_date = date or local_date(datetime.now(timezone.utc), user.timezone)
+    range_start, range_end = local_date_bounds(target_date, user.timezone)
+    meals = await load_todays_meals(db, user_id, range_start, range_end)
+
+    payload = {
+        "date": target_date.isoformat(),
+        "consumed_kcal": sum(m["total_calories"] or 0 for m in meals),
+        "carbs_g": float(sum(m["total_carbs_g"] or 0 for m in meals)),
+        "protein_g": float(sum(m["total_protein_g"] or 0 for m in meals)),
+        "fat_g": float(sum(m["total_fat_g"] or 0 for m in meals)),
+        "fiber_g": float(sum(m["total_fiber_g"] or 0 for m in meals)),
+        "meals": [
+            {
+                "id": meal["id"],
+                "meal_time": meal["meal_time"].isoformat(),
+                "label": meal_label(meal["food_items"]),
+                "calories": meal["total_calories"],
+                "carbs_g": float(meal["total_carbs_g"]) if meal["total_carbs_g"] is not None else None,
+            }
+            for meal in meals
+        ],
+    }
+    return etag_json_response(request, payload)
+
+
+@router.post("/device/heartbeat")
+async def post_device_heartbeat(
+    _body: DeviceHeartbeatRequest,
+    current: tuple[Device, str] = Depends(get_current_device),
+    db: AsyncSession = Depends(get_db),
+):
+    device, _user_id = current
+    await db.execute(update(Device).where(Device.id == device.id).values(last_seen_at=datetime.now(timezone.utc)))
+    await db.commit()
+    return {}
