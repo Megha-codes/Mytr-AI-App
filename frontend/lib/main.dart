@@ -8,6 +8,7 @@ import 'core/routing/router.dart';
 import 'core/theme/app_theme.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/home/models/models.dart';
+import 'features/wearables/services/health_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -50,7 +51,7 @@ class MytrAiApp extends ConsumerStatefulWidget {
   ConsumerState<MytrAiApp> createState() => _MytrAiAppState();
 }
 
-class _MytrAiAppState extends ConsumerState<MytrAiApp> {
+class _MytrAiAppState extends ConsumerState<MytrAiApp> with WidgetsBindingObserver {
   final AppLinks _appLinks = AppLinks();
   StreamSubscription<Uri>? _linkSub;
 
@@ -61,8 +62,19 @@ class _MytrAiAppState extends ConsumerState<MytrAiApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initDeepLinks();
     _resetInactivityTimer();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // Best-effort — HealthSyncService itself no-ops when no wearable is
+      // connected and never throws past its own boundary, so this is safe
+      // to fire unconditionally on every foreground.
+      unawaited(ref.read(healthSyncServiceProvider).sync());
+    }
   }
 
   /// Restart the idle countdown. Called on every pointer interaction.
@@ -111,6 +123,7 @@ class _MytrAiAppState extends ConsumerState<MytrAiApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _linkSub?.cancel();
     _inactivityTimer?.cancel();
     super.dispose();

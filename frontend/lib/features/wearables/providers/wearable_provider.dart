@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/google_health_service.dart';
+import '../services/health_sync_service.dart';
 import '../../../core/services/health_service.dart';
 
 class WearableConnectionState {
@@ -65,6 +66,9 @@ class WearableNotifier extends AsyncNotifier<WearableConnectionState> {
         healthLastSync: DateTime.now(),
       ),
     );
+    // Fire the first sync immediately — otherwise "connected" would sit
+    // there with no data until the next foreground/pull-to-refresh.
+    unawaited(ref.read(healthSyncServiceProvider).sync());
   }
 
   Future<void> connectGoogleHealth() async {
@@ -75,6 +79,7 @@ class WearableNotifier extends AsyncNotifier<WearableConnectionState> {
         googleHealthLastSync: DateTime.now(),
       ),
     );
+    unawaited(ref.read(healthSyncServiceProvider).sync());
   }
 
   Future<void> disconnectGoogleHealth() async {

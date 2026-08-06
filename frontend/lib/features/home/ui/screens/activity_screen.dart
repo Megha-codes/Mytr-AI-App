@@ -11,6 +11,7 @@ import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
 import '../../providers/providers.dart';
 import '../../../profile/providers/goals_provider.dart';
+import '../../../wearables/services/health_sync_service.dart';
 import '../widgets/activity_widgets.dart';
 
 class ActivityScreen extends ConsumerWidget {
@@ -19,7 +20,8 @@ class ActivityScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final activityAsync = ref.watch(activityProvider);
-    final sleep = ref.watch(sleepProvider);
+    final sleep = ref.watch(sleepProvider).valueOrNull ?? SleepState(hasData: false);
+    final healthDaily = ref.watch(healthDailyProvider).valueOrNull ?? const HealthDailyState();
     final deviceState = ref.watch(deviceProvider);
     final stepGoal = (ref.watch(goalsProvider).valueOrNull ?? const Goals()).dailyStepGoal;
 
@@ -27,13 +29,18 @@ class ActivityScreen extends ConsumerWidget {
       backgroundColor: AppTheme.backgroundCream,
       body: RefreshIndicator(
         onRefresh: () async {
+          // Fire a real health sync before refreshing — pulling down is the
+          // one explicit "get me current data" signal a user has here.
+          await ref.read(healthSyncServiceProvider).sync();
           ref.invalidate(activityProvider);
+          ref.invalidate(sleepProvider);
+          ref.invalidate(healthDailyProvider);
           await ref.read(activityProvider.future);
         },
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: activityAsync.when(
-            data: (activity) => _buildContent(context, activity, sleep, deviceState, stepGoal),
+            data: (activity) => _buildContent(context, activity, sleep, healthDaily, deviceState, stepGoal),
             loading: () => const _ActivityLoadingView(),
             error: (e, _) => Center(
               child: InlineErrorCard(
@@ -47,7 +54,7 @@ class ActivityScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, DeviceState deviceState, int stepGoal) {
+  Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, HealthDailyState healthDaily, DeviceState deviceState, int stepGoal) {
     final stepsPercent = stepGoal == 0 ? 0.0 : (activity.stepsToday / stepGoal).clamp(0, 1).toDouble();
 
     return Column(
@@ -107,6 +114,39 @@ class ActivityScreen extends ConsumerWidget {
                 ],
               ),
 
+              const SizedBox(height: 12),
+
+              // Resting HR and HRV have no home in ActivityState (that's
+              // still dashboard/activity_logs-sourced) — they come straight
+              // from GET /health/daily, and render "No data" rather than 0
+              // when the day has no sample, per §2.4's "0 and no data are
+              // different facts" rule the backend already enforces.
+              Row(
+                children: [
+                  Expanded(
+                    child: StatTile(
+                      label: 'Resting HR',
+                      value: healthDaily.restingHeartRate != null ? '${healthDaily.restingHeartRate!.round()}' : '—',
+                      unit: healthDaily.restingHeartRate != null ? 'bpm' : null,
+                      subtext: healthDaily.restingHeartRate == null ? 'No data yet' : null,
+                      textColor: AppTheme.glucoseHyper,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: StatTile(
+                      label: 'HRV',
+                      value: healthDaily.hrv != null ? '${healthDaily.hrv!.round()}' : '—',
+                      unit: healthDaily.hrv != null ? 'ms' : null,
+                      subtext: healthDaily.hrv == null ? 'No data yet' : null,
+                      textColor: AppTheme.brandGreen,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+
               const SizedBox(height: 16),
 
               AppCard(
@@ -140,11 +180,21 @@ class ActivityScreen extends ConsumerWidget {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text('Sleep last night', style: AppTheme.titleLarge),
-                          Text('${sleep.lastNightHours}h', style: AppTheme.displayMedium.copyWith(color: AppTheme.textPrimary)),
+                          Text('${sleep.lastNightHours.toStringAsFixed(1)}h', style: AppTheme.displayMedium.copyWith(color: AppTheme.textPrimary)),
                         ],
                       ),
                       const SizedBox(height: 24),
-                      SleepStageBar(stages: sleep.stages),
+                      // Stage breakdown is local-only (no backend storage for
+                      // it — see lastSyncedSleepStagesProvider) and can be
+                      // empty even when hasData is true, if no sync has run
+                      // yet this session. Fall back to just the total above.
+                      if (sleep.stages.isNotEmpty)
+                        SleepStageBar(stages: sleep.stages)
+                      else
+                        Text(
+                          'Sync your wearable to see stage breakdown.',
+                          style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                        ),
                     ],
                   ),
                 ),

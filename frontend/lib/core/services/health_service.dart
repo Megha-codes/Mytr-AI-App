@@ -23,11 +23,48 @@ class HealthService {
 
   static final _health = Health();
 
-  static const _types = [
+  // Requested outside of any per-platform branch: supported by both
+  // HealthKit and Health Connect with the same enum value.
+  static const _commonTypes = [
     HealthDataType.STEPS,
     HealthDataType.ACTIVE_ENERGY_BURNED,
     HealthDataType.HEART_RATE,
+    HealthDataType.RESTING_HEART_RATE,
+    // Sleep stages: these five names exist in both platforms' supported-type
+    // lists (the `health` package's dataTypeKeysIOS/dataTypeKeysAndroid).
+    // Deliberately NOT requested: HealthKit-only SLEEP_IN_BED, and Health
+    // Connect-only SLEEP_AWAKE_IN_BED/SLEEP_OUT_OF_BED/SLEEP_SESSION/
+    // SLEEP_UNKNOWN — all bookkeeping/container categories, not sleep time
+    // itself, and requesting a type absent from a platform's supported list
+    // risks the whole authorization call being rejected rather than just
+    // that one type being ignored.
+    HealthDataType.SLEEP_ASLEEP,
+    HealthDataType.SLEEP_AWAKE,
+    HealthDataType.SLEEP_DEEP,
+    HealthDataType.SLEEP_LIGHT,
+    HealthDataType.SLEEP_REM,
   ];
+
+  /// HRV is the one metric where the two platforms don't just gate the same
+  /// type — they measure genuinely different statistics. HealthKit reports
+  /// SDNN (standard deviation of NN intervals); Health Connect reports
+  /// RMSSD (root mean square of successive differences). These are NOT the
+  /// same number for the same underlying heartbeat data, and there is no
+  /// clean conversion between them. Both get ingested under one backend
+  /// "hrv" metric for now (per-platform, so a single device only ever
+  /// contributes one or the other) — this is a known simplification: a user
+  /// who switches from iPhone to Android would see a discontinuity in their
+  /// HRV trend that isn't a real physiological change. Flagging it here
+  /// rather than silently treating them as equivalent.
+  static HealthDataType get _hrvType => Platform.isIOS
+      ? HealthDataType.HEART_RATE_VARIABILITY_SDNN
+      : HealthDataType.HEART_RATE_VARIABILITY_RMSSD;
+
+  // Every call site below already checks _supported before touching _types,
+  // but guard here too rather than depend on that staying true forever —
+  // Platform.isIOS throws on web, and _hrvType has no other guard of its own.
+  static List<HealthDataType> get _types =>
+      _supported ? [..._commonTypes, _hrvType] : _commonTypes;
 
   static bool get _supported =>
       !kIsWeb && (Platform.isIOS || Platform.isAndroid);
@@ -95,6 +132,26 @@ class HealthService {
       heartRate: heartRate,
       weeklySteps: weekly,
     );
+  }
+
+  /// Raw, unaggregated data points for everything in [_types] (now including
+  /// HRV, resting heart rate, and sleep) since [since]. Unlike [fetchToday],
+  /// this is not summarized client-side — each point carries its own
+  /// [HealthDataPoint.uuid], which the caller uses as a per-sample
+  /// idempotency key when posting to the backend, so the backend's own
+  /// dedup/rollup does the aggregation instead of this client guessing at it.
+  Future<List<HealthDataPoint>> fetchRecentSamples({required Duration since}) async {
+    if (!_supported) return [];
+    final now = DateTime.now();
+    try {
+      return await _health.getHealthDataFromTypes(
+        startTime: now.subtract(since),
+        endTime: now,
+        types: _types,
+      );
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<List<DailyValue>> _fetchWeeklySteps(DateTime now) async {

@@ -8,6 +8,7 @@ import '../../../../core/widgets/state_feedback_widgets.dart';
 import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/api/ws_debug.dart';
 import '../../../profile/providers/user_profile_provider.dart';
+import '../../../wearables/services/health_sync_service.dart';
 import '../../providers/providers.dart';
 import '../widgets/header_contents.dart';
 import '../widgets/body_contents.dart';
@@ -35,8 +36,10 @@ class HomeScreen extends ConsumerWidget {
           return RefreshIndicator(
             color: AppTheme.brandGreen,
             onRefresh: () async {
+              await ref.read(healthSyncServiceProvider).sync();
               ref.invalidate(dashboardProvider);
               ref.invalidate(userProfileProvider);
+              ref.invalidate(healthDailyProvider);
               // Wait for both to complete so the indicator dismisses cleanly
               await Future.wait([
                 ref.read(dashboardProvider.future),

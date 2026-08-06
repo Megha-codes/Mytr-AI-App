@@ -5,6 +5,7 @@ export 'subproviders/activity_provider.dart';
 export 'subproviders/coach_provider.dart';
 export 'subproviders/meal_recognition_provider.dart';
 export 'subproviders/inference_provider.dart';
+export 'subproviders/health_daily_provider.dart';
 export '../models/models.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -12,6 +13,7 @@ import '../models/models.dart';
 import '../../profile/providers/user_profile_provider.dart';
 import '../../wearables/providers/wearable_provider.dart';
 import 'subproviders/dashboard_provider.dart';
+import 'subproviders/health_daily_provider.dart';
 
 // ── InsulinProvider ──────────────────────────────────────────────────────────
 // No bolus data source is wired yet, so totals are zero until insulin logging
@@ -37,8 +39,15 @@ final insulinProvider = Provider<InsulinState>((ref) {
 });
 
 // ── SleepProvider ────────────────────────────────────────────────────────────
-// Sleep requires a connected wearable/Health source. Until one is connected,
-// `hasData` is false and the UI hides sleep cards instead of showing fake data.
+// Sourced from GET /health/daily's sleep_minutes (architecture-v3.md §2.5):
+// `hasData` is true only when the backend actually has a sleep sample for
+// today — a night with genuinely 0 minutes of sleep is not representable
+// today (no such HealthKit/Health Connect sample exists), so `hasData:
+// false` still correctly means "nothing synced" rather than conflating it
+// with a real zero. `stages` is a separate, local-only concern — see
+// [lastSyncedSleepStagesProvider]'s doc comment for why it can be non-empty
+// even when hasData reflects older/cached backend data, or empty even when
+// hasData is true (no sync has run yet this app session).
 enum SleepQuality { poor, fair, good, excellent }
 
 class SleepState {
@@ -55,10 +64,37 @@ class SleepState {
   });
 }
 
-final sleepProvider = Provider<SleepState>((ref) {
-  // No wearable/Health Connect sync implemented yet → no sleep data.
-  return SleepState(hasData: false);
-});
+class SleepNotifier extends AutoDisposeAsyncNotifier<SleepState> {
+  @override
+  Future<SleepState> build() async {
+    final daily = await ref.watch(healthDailyProvider.future);
+    final stages = ref.watch(lastSyncedSleepStagesProvider);
+
+    if (daily.sleepMinutes == null) {
+      return SleepState(hasData: false, stages: stages);
+    }
+
+    final hours = daily.sleepMinutes! / 60;
+    return SleepState(
+      hasData: true,
+      lastNightHours: hours,
+      quality: _qualityFor(hours),
+      stages: stages,
+    );
+  }
+
+  // A simple duration-based heuristic, not a clinical assessment — good
+  // enough to color the sleep card without pretending to be more than that.
+  SleepQuality _qualityFor(double hours) {
+    if (hours < 5) return SleepQuality.poor;
+    if (hours < 6.5) return SleepQuality.fair;
+    if (hours < 9) return SleepQuality.good;
+    return SleepQuality.excellent;
+  }
+}
+
+final sleepProvider =
+    AsyncNotifierProvider.autoDispose<SleepNotifier, SleepState>(SleepNotifier.new);
 
 // ── WeightProvider ───────────────────────────────────────────────────────────
 // Current weight comes from the real profile the user entered at onboarding.
