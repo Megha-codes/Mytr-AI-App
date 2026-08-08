@@ -16,6 +16,13 @@
     <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
     <uses-permission android:name="android.permission.health.READ_DISTANCE"/>
     <uses-permission android:name="android.permission.health.READ_TOTAL_CALORIES_BURNED"/>
+    <!-- ACTIVE (not TOTAL) is what HealthService actually requests
+         (HealthDataType.ACTIVE_ENERGY_BURNED -> ActiveCaloriesBurnedRecord, per
+         health-13.3.1's own HealthConstants.kt) — READ_TOTAL_CALORIES_BURNED
+         above was already declared but doesn't cover what the app asks for. -->
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
+    <uses-permission android:name="android.permission.health.READ_RESTING_HEART_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE_VARIABILITY"/>
 
     <application
         android:label="Mytr.AI"
