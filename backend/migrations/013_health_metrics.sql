@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS health_metrics (
     unit          TEXT NOT NULL,  -- 'count' | 'kcal' | 'bpm' | 'ms' | 'min' | 'kg'
     started_at    TIMESTAMPTZ NOT NULL,
     ended_at      TIMESTAMPTZ NOT NULL,  -- == started_at for instantaneous samples
-    source        TEXT NOT NULL,  -- 'APPLE_HEALTH' | 'GOOGLE_HEALTH_CONNECT' | 'FITBIT' | 'GARMIN' | 'MANUAL'
+    source        TEXT NOT NULL,  -- 'APPLE_HEALTH' | 'HEALTH_CONNECT' | 'FITBIT' | 'MANUAL'
     external_id   TEXT,           -- platform sample UUID, for idempotent re-sync
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );

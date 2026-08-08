@@ -21,13 +21,6 @@ class FitbitCredentials:
     refresh_token: str
     expires_at:    datetime
 
-# ── Garmin (OAuth 1.0a tokens) ───────────────────────────────────────────────
-
-@dataclass
-class GarminCredentials:
-    oauth_token:        str
-    oauth_token_secret: str
-
 
 # ── Typed facade over a pluggable SecretsStore ────────────────────────────────
 
@@ -43,7 +36,6 @@ class SecretsManager:
     Secret keys follow the convention:
       "libre:{user_id}"   →  LibreCredentials
       "fitbit:{user_id}"  →  FitbitCredentials
-      "garmin:{user_id}"  →  GarminCredentials
     """
 
     def __init__(self, store: SecretsStore) -> None:
@@ -105,35 +97,12 @@ class SecretsManager:
             expires_at=datetime.fromisoformat(raw["expires_at"]),
         )
 
-    # Garmin ─────────────────────────────────────────────────────────────────
-
-    async def store_garmin_tokens(
-        self,
-        user_id: str,
-        oauth_token: str,
-        oauth_token_secret: str,
-    ) -> None:
-        await self._store.store(
-            f"garmin:{user_id}",
-            {"oauth_token": oauth_token, "oauth_token_secret": oauth_token_secret},
-        )
-
-    async def get_garmin_credentials(
-        self, user_id: str
-    ) -> Optional[GarminCredentials]:
-        raw = await self._store.get(f"garmin:{user_id}")
-        if raw is None:
-            return None
-        return GarminCredentials(
-            oauth_token=raw["oauth_token"], oauth_token_secret=raw["oauth_token_secret"]
-        )
-
     # Generic Delete ─────────────────────────────────────────────────────────
 
     async def delete_credentials(self, user_id: str, device_type: str) -> None:
         """
         Wipes secrets for a specific device type.
-        device_type should be "libre", "fitbit", or "garmin".
+        device_type should be "libre" or "fitbit".
         """
         await self._store.delete(f"{device_type.lower()}:{user_id}")
 

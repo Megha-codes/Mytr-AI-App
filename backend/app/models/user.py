@@ -91,7 +91,7 @@ class WearableDevice(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, server_default=text("gen_random_uuid()"))
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"))
-    device_type = Column(String)        # 'FITBIT', 'GARMIN', 'APPLE_HEALTH', 'GOOGLE_FIT'
+    device_type = Column(String)        # 'FITBIT', 'APPLE_HEALTH', 'HEALTH_CONNECT'
     is_active = Column(Boolean, server_default=text("true"))
     connected_at = Column(DateTime, server_default=text("now()"))
     deleted_at = Column(DateTime)

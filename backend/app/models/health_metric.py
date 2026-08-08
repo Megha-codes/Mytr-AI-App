@@ -32,6 +32,6 @@ class HealthMetric(Base):
     unit = Column(String, nullable=False)
     started_at = Column(DateTime(timezone=True), nullable=False)
     ended_at = Column(DateTime(timezone=True), nullable=False)  # == started_at for instantaneous samples
-    source = Column(String, nullable=False)  # 'APPLE_HEALTH' | 'GOOGLE_HEALTH_CONNECT' | 'FITBIT' | 'GARMIN' | 'MANUAL'
+    source = Column(String, nullable=False)  # 'APPLE_HEALTH' | 'HEALTH_CONNECT' | 'FITBIT' | 'MANUAL'
     external_id = Column(String)  # platform sample id, for idempotent re-sync
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))

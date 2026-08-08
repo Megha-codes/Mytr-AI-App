@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -82,9 +84,16 @@ class _SectionHeader extends StatelessWidget {
 // widget state and nothing else, so a user could "select" Apple Health here
 // and nothing would actually be connected. Now backed by the same
 // wearableProvider that the real connect screen (ManageDevicesScreen,
-// reachable at /profile/devices) uses, so selecting here has the same
-// real effect: a genuine HealthKit/Health Connect or Fitbit permission
-// request, not a fake checkmark.
+// reachable at /profile/devices) uses, so tapping has the same real
+// effect: a genuine HealthKit/Health Connect permission request, not a
+// fake checkmark.
+//
+// One tile now, not four: Garmin was never implemented (removed rather
+// than left as a fake "coming soon" option), and Fitbit is no longer a
+// separate connect path — its Android app writes into Health Connect
+// directly, and Health Connect itself is a permission grant (OS-level on
+// Android 14+), not a second account login. So there's exactly one real
+// option per platform.
 class _WearablesGrid extends ConsumerStatefulWidget {
   const _WearablesGrid();
   @override
@@ -92,83 +101,44 @@ class _WearablesGrid extends ConsumerStatefulWidget {
 }
 
 class _WearablesGridState extends ConsumerState<_WearablesGrid> {
-  // Which tile is mid-connect right now, so we can show a brief loading
-  // state and avoid double-tapping while a permission request is in flight.
-  String? _connecting;
-
-  static const _items = [
-    ('Apple Health', '⌚'),
-    ('Google Fit',   '📱'),
-    ('Fitbit',        '🟠'),
-    ('Garmin',        '🟢'),
-  ];
+  bool _connecting = false;
 
   @override
   Widget build(BuildContext context) {
     final wearables = ref.watch(wearableProvider).valueOrNull;
+    final isConnected = wearables?.healthConnected ?? false;
+    final label = wearables?.healthName ??
+        (!kIsWeb && Platform.isIOS ? 'Apple Health' : 'Google Health Connect / Fitbit');
 
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      crossAxisSpacing: 8,
-      mainAxisSpacing: 8,
-      childAspectRatio: 2.2,
-      children: _items.map<Widget>((item) {
-        final name = item.$1;
-        // Apple Health and Google Fit are both the native HealthKit/Health
-        // Connect path (HealthService picks the right platform internally),
-        // so both reflect the same healthConnected flag.
-        final isConnected = switch (name) {
-          'Apple Health' || 'Google Fit' => wearables?.healthConnected ?? false,
-          'Fitbit' => wearables?.googleHealthConnected ?? false,
-          _ => false,
-        };
-        final isBusy = _connecting == name;
-
-        return GestureDetector(
-          onTap: isBusy ? null : () => _handleTap(name),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isConnected ? AppColors.nearBlack : AppColors.borderLight, width: isConnected ? 1.5 : 1),
-            ),
-            child: Row(
-              children: [
-                Text(item.$2, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 8),
-                Expanded(child: Text(name, style: const TextStyle(color: AppColors.nearBlack, fontSize: 8, fontWeight: FontWeight.bold))),
-                if (isBusy)
-                  const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5))
-                else if (isConnected)
-                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.limeAccent, shape: BoxShape.circle)),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
+    return GestureDetector(
+      onTap: _connecting ? null : _handleTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: isConnected ? AppColors.nearBlack : AppColors.borderLight, width: isConnected ? 1.5 : 1),
+        ),
+        child: Row(
+          children: [
+            const Text('⌚', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 10),
+            Expanded(child: Text(label, style: const TextStyle(color: AppColors.nearBlack, fontSize: 10, fontWeight: FontWeight.bold))),
+            if (_connecting)
+              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))
+            else if (isConnected)
+              Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.limeAccent, shape: BoxShape.circle)),
+          ],
+        ),
+      ),
     );
   }
 
-  Future<void> _handleTap(String name) async {
-    if (name == 'Garmin') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Garmin integration coming soon')),
-      );
-      return;
-    }
-
-    setState(() => _connecting = name);
+  Future<void> _handleTap() async {
+    setState(() => _connecting = true);
     try {
-      if (name == 'Fitbit') {
-        await ref.read(wearableProvider.notifier).connectGoogleHealth();
-      } else {
-        // Apple Health / Google Fit
-        await ref.read(wearableProvider.notifier).connectHealth();
-      }
+      await ref.read(wearableProvider.notifier).connectHealth();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -176,7 +146,7 @@ class _WearablesGridState extends ConsumerState<_WearablesGrid> {
         );
       }
     } finally {
-      if (mounted) setState(() => _connecting = null);
+      if (mounted) setState(() => _connecting = false);
     }
   }
 }

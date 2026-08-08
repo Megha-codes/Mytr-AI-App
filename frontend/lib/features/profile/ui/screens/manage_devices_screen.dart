@@ -115,7 +115,7 @@ class ManageDevicesScreen extends ConsumerWidget {
         if (isIOS || kIsWeb)
           WearableConnectionTile(
             name: 'Apple Health',
-            description: 'Steps, heart rate, and sleep data.',
+            description: 'Steps, heart rate, sleep, HRV, and resting heart rate.',
             icon: LucideIcons.heart,
             isConnected: state.healthConnected,
             lastSync: state.healthLastSync,
@@ -128,11 +128,15 @@ class ManageDevicesScreen extends ConsumerWidget {
             ),
           ),
 
-        // Health Connect — Android only (replaced Google Fit in 2024)
+        // Health Connect — Android only. Covers Fitbit too: Fitbit's own
+        // Android app writes into Health Connect directly, and Health
+        // Connect is OS-level on Android 14+ (a permission grant, not a
+        // separate account login) — so there's nothing to connect
+        // separately for Fitbit anymore.
         if (isAndroid || kIsWeb)
           WearableConnectionTile(
-            name: 'Health Connect',
-            description: 'Activity and fitness tracking via Android Health Connect.',
+            name: 'Google Health Connect / Fitbit',
+            description: 'Steps, heart rate, sleep, HRV, and resting heart rate — includes Fitbit if its app syncs to Health Connect.',
             icon: LucideIcons.activity,
             isConnected: state.healthConnected,
             lastSync: state.healthLastSync,
@@ -140,37 +144,10 @@ class ManageDevicesScreen extends ConsumerWidget {
             onDisconnect: () => _showDisconnectSheet(
               context,
               ref,
-              name: 'Google Fit',
+              name: 'Google Health Connect / Fitbit',
               onConfirm: () => ref.read(wearableProvider.notifier).disconnectHealth(),
             ),
           ),
-
-        // Fitbit via Google Health API
-        WearableConnectionTile(
-          name: 'Fitbit',
-          description: 'Sync Fitbit device data via Google Health API.',
-          icon: LucideIcons.watch,
-          isConnected: state.googleHealthConnected,
-          lastSync: state.googleHealthLastSync,
-          onConnect: () => _connectGoogleHealth(context, ref),
-          onDisconnect: () => _showDisconnectSheet(
-            context,
-            ref,
-            name: 'Fitbit',
-            onConfirm: () =>
-                ref.read(wearableProvider.notifier).disconnectGoogleHealth(),
-          ),
-        ),
-
-        // Garmin — placeholder (no integration yet)
-        WearableConnectionTile(
-          name: 'Garmin Connect',
-          description: 'Coming soon.',
-          icon: LucideIcons.award,
-          isConnected: false,
-          onConnect: () => _showComingSoon(context, 'Garmin Connect'),
-          onDisconnect: () {},
-        ),
       ],
     );
   }
@@ -187,24 +164,6 @@ class ManageDevicesScreen extends ConsumerWidget {
         );
       }
     }
-  }
-
-  Future<void> _connectGoogleHealth(BuildContext context, WidgetRef ref) async {
-    try {
-      await ref.read(wearableProvider.notifier).connectGoogleHealth();
-    } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.toString()), backgroundColor: AppColors.error),
-        );
-      }
-    }
-  }
-
-  void _showComingSoon(BuildContext context, String name) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$name integration coming soon')),
-    );
   }
 
   void _showDisconnectSheet(

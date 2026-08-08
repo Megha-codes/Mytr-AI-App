@@ -54,7 +54,7 @@ async def test_secrets_manager_is_backend_agnostic():
     assert await manager.get_libre_credentials(user_id) is None
 
 
-async def test_secrets_manager_fitbit_and_garmin_round_trip():
+async def test_secrets_manager_fitbit_round_trip():
     manager = SecretsManager(store=MockSecretsManager())
     user_id = str(uuid.uuid4())
     expires_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
@@ -63,8 +63,3 @@ async def test_secrets_manager_fitbit_and_garmin_round_trip():
     fitbit = await manager.get_fitbit_credentials(user_id)
     assert fitbit.access_token == "access"
     assert fitbit.expires_at == expires_at
-
-    await manager.store_garmin_tokens(user_id, "oauth-tok", "oauth-secret")
-    garmin = await manager.get_garmin_credentials(user_id)
-    assert garmin.oauth_token == "oauth-tok"
-    assert garmin.oauth_token_secret == "oauth-secret"

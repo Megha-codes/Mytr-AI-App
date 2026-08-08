@@ -153,18 +153,13 @@ final deviceProvider = Provider<DeviceState>((ref) {
   final wearables = ref.watch(wearableProvider).valueOrNull;
   final connected = <WearableDevice>[];
 
+  // Health Connect covers Fitbit too now (its Android app writes into
+  // Health Connect directly) — one entry, not a separate "Fitbit" one.
   if (wearables?.healthConnected == true) {
     connected.add(WearableDevice(
       name: wearables!.healthName,
       type: 'HEALTH',
       lastSync: wearables.healthLastSync ?? DateTime.now(),
-    ));
-  }
-  if (wearables?.googleHealthConnected == true) {
-    connected.add(WearableDevice(
-      name: 'Fitbit',
-      type: 'GOOGLE_HEALTH',
-      lastSync: wearables!.googleHealthLastSync ?? DateTime.now(),
     ));
   }
 

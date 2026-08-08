@@ -7,7 +7,6 @@ import '../../../core/services/health_service.dart';
 import '../../home/providers/subproviders/dashboard_provider.dart';
 import '../../home/providers/subproviders/health_daily_provider.dart';
 import '../providers/wearable_provider.dart';
-import 'google_health_service.dart';
 
 class HealthSyncOutcome {
   final int sampled;
@@ -26,6 +25,12 @@ class HealthSyncOutcome {
 /// `POST /health/samples`, with per-sample external_ids so calling this
 /// repeatedly (on foreground, on pull-to-refresh, right after connecting)
 /// is safe — the backend dedups, it doesn't double-count.
+///
+/// One source only: native HealthKit/Health Connect via [HealthService].
+/// There used to be a second, OAuth-based Fitbit-via-Google-Health path
+/// here — removed. Fitbit's own Android app writes into Health Connect
+/// directly, so connecting Health Connect already covers Fitbit for
+/// anyone syncing that way, without a second login.
 class HealthSyncService {
   HealthSyncService(this._ref);
   final Ref _ref;
@@ -39,33 +44,21 @@ class HealthSyncService {
 
   Future<HealthSyncOutcome> sync() async {
     final wearables = _ref.read(wearableProvider).valueOrNull;
-    if (wearables == null) return const HealthSyncOutcome();
+    if (wearables == null || !wearables.healthConnected) {
+      return const HealthSyncOutcome();
+    }
 
     final samples = <HealthSampleDraft>[];
-
-    if (wearables.healthConnected) {
-      // Native HealthKit/Health Connect is authoritative when connected —
-      // covers steps/calories/heart_rate AND the metrics Fitbit-via-Google-
-      // Health can't provide at all (resting HR, HRV, sleep). Deliberately
-      // NOT also pulling the overlapping fields from Google Health below:
-      // summing the same steps from two sources would double-count them.
-      try {
-        final points = await HealthService.instance.fetchRecentSamples(since: _lookback);
-        for (final point in points) {
-          final draft = mapHealthDataPoint(point);
-          if (draft != null) samples.add(draft);
-        }
-        _ref.read(lastSyncedSleepStagesProvider.notifier).state = deriveSleepStages(points);
-      } catch (_) {
-        // Leave whatever stage breakdown we already had rather than
-        // clearing it on a transient read failure.
+    try {
+      final points = await HealthService.instance.fetchRecentSamples(since: _lookback);
+      for (final point in points) {
+        final draft = mapHealthDataPoint(point);
+        if (draft != null) samples.add(draft);
       }
-    } else if (wearables.googleHealthConnected) {
-      // Fitbit via Google Health API only ever gives us a same-day
-      // aggregate, not per-sample points — no HRV/RHR/sleep from this path.
-      try {
-        samples.addAll(await _fitbitSamples());
-      } catch (_) {}
+      _ref.read(lastSyncedSleepStagesProvider.notifier).state = deriveSleepStages(points);
+    } catch (_) {
+      // Leave whatever stage breakdown we already had rather than
+      // clearing it on a transient read failure.
     }
 
     if (samples.isEmpty) return const HealthSyncOutcome();
@@ -99,41 +92,6 @@ class HealthSyncService {
       return HealthSyncOutcome(sampled: samples.length, error: 'Health sync failed.');
     }
   }
-
-  Future<List<HealthSampleDraft>> _fitbitSamples() async {
-    final data = await GoogleHealthService.instance.fetchToday();
-    final now = DateTime.now();
-    final midnight = DateTime(now.year, now.month, now.day);
-    final day = _dateKey(now);
-    const source = 'GOOGLE_HEALTH_FITBIT';
-
-    final drafts = <HealthSampleDraft>[];
-    if (data.steps > 0) {
-      drafts.add(HealthSampleDraft(
-        metric: 'steps', value: data.steps.toDouble(), unit: 'count',
-        startedAt: midnight, endedAt: now, source: source,
-        externalId: 'fitbit-$day-steps',
-      ));
-    }
-    if (data.caloriesOut > 0) {
-      drafts.add(HealthSampleDraft(
-        metric: 'active_energy_kcal', value: data.caloriesOut.toDouble(), unit: 'kcal',
-        startedAt: midnight, endedAt: now, source: source,
-        externalId: 'fitbit-$day-active_energy_kcal',
-      ));
-    }
-    if (data.heartRate > 0) {
-      drafts.add(HealthSampleDraft(
-        metric: 'heart_rate', value: data.heartRate.toDouble(), unit: 'bpm',
-        startedAt: midnight, endedAt: now, source: source,
-        externalId: 'fitbit-$day-heart_rate',
-      ));
-    }
-    return drafts;
-  }
-
-  String _dateKey(DateTime dt) =>
-      '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
 
   Iterable<List<T>> _chunked<T>(List<T> items, int size) sync* {
     for (var i = 0; i < items.length; i += size) {
