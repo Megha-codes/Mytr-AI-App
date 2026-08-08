@@ -23,3 +23,8 @@ python-jose[cryptography]>=3.3.0
 # (notably Windows) and silently falls back to UTC — reintroducing the exact
 # naive-UTC mis-stamping this fix removes.
 tzdata>=2024.1
+
+# Loads backend/.env into the process environment (app/__init__.py) —
+# nothing else did this, which is why JWT_SECRET etc. weren't visible to
+# uvicorn even with the values sitting in .env.
+python-dotenv>=1.0.1

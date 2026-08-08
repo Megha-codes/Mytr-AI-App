@@ -19,6 +19,7 @@ import '../../features/profile/ui/screens/goals_screen.dart';
 import '../../features/profile/ui/screens/account_settings_screen.dart';
 import '../../features/devices/ui/screens/device_management_screen.dart';
 import '../../features/devices/ui/screens/pair_device_screen.dart';
+import '../../features/profile/ui/screens/manage_devices_screen.dart';
 import '../../features/home/models/models.dart';
 
 // Onboarding screens
@@ -147,7 +148,7 @@ final appRouterProvider = Provider<GoRouter>((ref) {
       // ── Profile sub-routes ────────────────────────────────────────────
       GoRoute(path: '/profile/stats-edit',     builder: (_, _) => const _ComingSoonScreen(title: 'Personal Stats')),
       GoRoute(path: '/profile/goals',          builder: (_, _) => const GoalsScreen()),
-      GoRoute(path: '/profile/devices',        builder: (_, _) => const _ComingSoonScreen(title: 'Connected Devices')),
+      GoRoute(path: '/profile/devices',        builder: (_, _) => const ManageDevicesScreen()),
       // The desk display unit (architecture-v3.md §2.2) — a physical
       // pairable device, distinct from the CGM/wearables tracked at
       // /profile/devices above.

@@ -49,10 +49,14 @@ async def shutdown() -> None:
         with contextlib.suppress(asyncio.CancelledError):
             await task
 
-# CORS middleware for Flutter frontend communication
+# CORS middleware for Flutter frontend communication.
+# allow_origin_regex covers local dev (Flutter web's `flutter run -d chrome`
+# picks a random port each launch) without opening anything up in
+# production — the explicit allow_origins list is untouched.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://mytr.ai", "https://www.mytr.ai"],
+    allow_origin_regex=r"http://localhost:\d+",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
