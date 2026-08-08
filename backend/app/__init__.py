@@ -14,6 +14,15 @@ from the repo root instead of backend/.
 
 from pathlib import Path
 
-from dotenv import load_dotenv
-
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    # python-dotenv is in requirements.txt, but not every environment this
+    # code runs in is guaranteed to have it installed (e.g. the test suite
+    # has historically been run against a system interpreter without it) —
+    # degrade to "nothing gets auto-loaded from .env" rather than crashing
+    # every import of `app`. Whatever's already in the OS environment (env
+    # vars set another way, or supervisor's `environment=` on the VPS)
+    # still works either way.
+    pass
