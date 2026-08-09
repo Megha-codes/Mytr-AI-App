@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'core/config/environment.dart';
 import 'core/routing/router.dart';
 import 'core/theme/app_theme.dart';
+import 'core/services/health_service.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/home/models/models.dart';
 import 'features/wearables/services/health_sync_service.dart';
@@ -15,6 +16,19 @@ void main() async {
 
   // Initialize configuration
   await Environment.init();
+
+  // Must happen this early, not lazily on first screen visit (which is what
+  // WearableNotifier.build() would otherwise do first): the health plugin's
+  // Android implementation registers an ActivityResultLauncher to actually
+  // show the Health Connect permission screen, and Android only allows that
+  // registration before the Activity reaches its "started" state. Configure
+  // after that point and requestAuthorization() fails silently — no
+  // permission screen, no exception, just native "Permission launcher not
+  // found" logs (FLUTTER_HEALTH tag) that never reach Dart at all. Wrapped
+  // in try/catch so a plugin hiccup here can't block app startup entirely.
+  try {
+    await HealthService.instance.configure();
+  } catch (_) {}
 
   // Initialize Hive
   await Hive.initFlutter();
