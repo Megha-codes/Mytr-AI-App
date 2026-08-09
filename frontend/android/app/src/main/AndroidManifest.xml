@@ -58,11 +58,31 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="mytrai"/>
             </intent-filter>
-            <!-- Health Connect Intent Filter -->
+            <!-- Health Connect permissions-rationale handling, pre-Android-14
+                 (Health Connect as a separately-installed Play Store app). -->
             <intent-filter>
                 <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
             </intent-filter>
         </activity>
+
+        <!-- Health Connect permissions-rationale handling, Android 14+ (Health
+             Connect built into the platform). Without this, Health Connect's
+             own UI reports the app as needing to be updated rather than
+             showing a permission screen at all — this is a required
+             declaration, not optional, per Android's own Health Connect
+             integration guide. Points at MainActivity rather than a separate
+             rationale screen, since that's what the pre-14 intent-filter
+             above already does too. -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
