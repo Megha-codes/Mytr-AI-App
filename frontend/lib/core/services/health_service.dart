@@ -77,14 +77,17 @@ class HealthService {
     _configured = true;
   }
 
+  /// Deliberately does NOT swallow exceptions the way the other methods here
+  /// do — this backs a direct user action (tapping "connect") that already
+  /// has real catch+SnackBar handling at the call site (ManageDevicesScreen,
+  /// the onboarding wearables tile), so the actual failure reason (Health
+  /// Connect not installed, a rejected permission type, etc.) should reach
+  /// the user instead of being collapsed into a generic "denied" message
+  /// that's indistinguishable from someone genuinely tapping Deny.
   Future<bool> requestPermissions() async {
     if (!_supported) return false;
-    try {
-      await configure();
-      return await _health.requestAuthorization(_types);
-    } catch (_) {
-      return false;
-    }
+    await configure();
+    return await _health.requestAuthorization(_types);
   }
 
   Future<bool> isAuthorized() async {
