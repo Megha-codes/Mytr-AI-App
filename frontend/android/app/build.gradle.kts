@@ -47,8 +47,15 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
-            isMinifyEnabled = true
-            isShrinkResources = true
+            // Temporarily off: no proguard-rules.pro exists in this project at
+            // all, so R8 was minifying/shrinking with zero custom keep rules —
+            // a common cause of plugins that use reflection (Health Connect's
+            // Kotlin SDK, wrapped by the `health` plugin, is exactly this kind
+            // of dependency) silently breaking in release builds only, with no
+            // debug output to show why. A demo build doesn't need code
+            // shrinking; re-enable once real keep rules are written and tested.
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
