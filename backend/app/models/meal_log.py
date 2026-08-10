@@ -27,6 +27,13 @@ class MealLog(Base):
     total_fiber_g = Column(Numeric(6, 1), default=0)
     glycaemic_load = Column(Numeric(5, 1))
 
+    # Which nutrition source resolved this meal's macros (migrations/
+    # 015_meal_nutrition_source.sql): 'ifct' | 'usda' | 'gemini_estimate' |
+    # 'manual'. nutrition_verified is true for a real lookup or user-entered
+    # value, false only for the unverified gemini_estimate guess.
+    nutrition_source = Column(String, nullable=True)
+    nutrition_verified = Column(Boolean, nullable=True)
+
     # Bolus recommendation
     recommendation_id = Column(
         UUID(as_uuid=True), ForeignKey("recommendation_audit_log.id"), nullable=True

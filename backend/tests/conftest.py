@@ -100,6 +100,15 @@ async def build_sqlite_db():
     from app.models.secret import EncryptedSecret
     from app.models.health_metric import HealthMetric
     from app.models.ifct_food import IFCTFood
+    # Not added to `tables` below (recommendation_audit_log itself is never
+    # created here) — imported so its Table object exists in Base.metadata
+    # at all. MealLog.recommendation_id is a ForeignKey to it, and the ORM
+    # insert path (app/api/nutrition.py's `db.add(MealLog(...))`) walks the
+    # *whole* metadata graph to order the flush, not just the tables this
+    # fixture creates — without this import that walk raises
+    # NoReferencedTableError before a single query even runs, for a table
+    # nothing here is trying to touch.
+    import app.models.inference  # noqa: F401
 
     tables = [
         User.__table__, InsulinProfile.__table__, CGMDevice.__table__,
@@ -120,22 +129,34 @@ async def build_sqlite_db():
         # meal_logs (models/meal_log.py) can't join the `tables=` list above —
         # its `food_items` column is Postgres-only JSONB, which has no sqlite
         # compiler at all (UnsupportedCompilationError), unlike the UUID/JSON
-        # types elsewhere that at least degrade gracefully. Readers that need
-        # it use raw SQL against this hand-written, sqlite-compatible mirror
-        # of migrations/002_meal_logs.sql instead of the ORM model — see
-        # app/api/device_data.py.
+        # types elsewhere that at least degrade gracefully. This hand-written,
+        # sqlite-compatible mirror of migrations/002_meal_logs.sql (+ 005's
+        # total_fiber_g, + 015's nutrition_source/nutrition_verified) stands
+        # in instead — full column set, since both readers (app/api/
+        # device_data.py, raw SQL) and the ORM write path (app/api/
+        # nutrition.py's `db.add(MealLog(...))`) need every column the
+        # mapped model declares, not just the ones any one caller touches.
         await conn.execute(text("""
             CREATE TABLE IF NOT EXISTS meal_logs (
-                id TEXT PRIMARY KEY,
+                id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()),
                 user_id TEXT NOT NULL,
                 meal_time TIMESTAMP NOT NULL,
                 food_items TEXT NOT NULL,
+                recognition_confidence NUMERIC,
+                user_corrected BOOLEAN DEFAULT 0,
+                user_correction_notes TEXT,
                 total_calories INTEGER,
                 total_carbs_g NUMERIC,
                 total_protein_g NUMERIC,
                 total_fat_g NUMERIC,
                 total_fiber_g NUMERIC,
                 glycaemic_load NUMERIC,
+                nutrition_source TEXT,
+                nutrition_verified BOOLEAN,
+                recommendation_id TEXT,
+                post_meal_glucose_1hr INTEGER,
+                post_meal_glucose_2hr INTEGER,
+                glucose_outcome TEXT,
                 created_at TIMESTAMP
             )
         """))

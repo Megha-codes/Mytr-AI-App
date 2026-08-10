@@ -24,6 +24,7 @@ from ..schemas.nutrition import (
 )
 from ..services.gemini_service import GeminiVisionService
 from ..services.meal_enrichment_service import MealEnrichmentService, RawFoodItem
+from ..services.nutrition.source_router import resolve_nutrition
 from ..services.usda_service import USDAService
 from .auth import get_current_user
 
@@ -170,14 +171,39 @@ async def log_meal(
 ):
     ratio = request.portion_grams / 100.0
 
+    if request.calories_per_100g is not None:
+        # Client already resolved nutrition itself — the pre-existing flow
+        # of POST /search (USDA-only) then picking a result. Honor its
+        # numbers as given rather than re-resolving; source is "usda" since
+        # /search has never queried anything else.
+        source = "usda"
+        verified = True
+        calories_per_100g = request.calories_per_100g
+        protein_per_100g = request.protein_per_100g or 0.0
+        carbs_per_100g = request.carbs_per_100g or 0.0
+        fat_per_100g = request.fat_per_100g or 0.0
+        fiber_per_100g = request.fiber_per_100g or 0.0
+    else:
+        # No client-supplied macros: this is the Gemini-recognition path
+        # (analyze-image gave a food name + portion, nothing else) —
+        # resolve nutrition server-side, IFCT -> USDA -> Gemini estimate.
+        resolved = await resolve_nutrition(db, request.food_name, usda_service, gemini_service)
+        source = resolved.source
+        verified = resolved.verified
+        calories_per_100g = resolved.calories_per_100g
+        protein_per_100g = resolved.protein_per_100g
+        carbs_per_100g = resolved.carbs_per_100g
+        fat_per_100g = resolved.fat_per_100g
+        fiber_per_100g = resolved.fiber_per_100g
+
     raw = RawFoodItem(
         name=request.food_name,
         portion_grams=request.portion_grams,
-        calories=request.calories_per_100g * ratio,
-        carbs_g=request.carbs_per_100g * ratio,
-        protein_g=request.protein_per_100g * ratio,
-        fat_g=request.fat_per_100g * ratio,
-        fiber_g=request.fiber_per_100g * ratio,
+        calories=calories_per_100g * ratio,
+        carbs_g=carbs_per_100g * ratio,
+        protein_g=protein_per_100g * ratio,
+        fat_g=fat_per_100g * ratio,
+        fiber_g=fiber_per_100g * ratio,
         confidence=1.0,
     )
 
@@ -205,17 +231,21 @@ async def log_meal(
         total_fat_g=enriched.total_fat_g,
         total_fiber_g=enriched.total_fiber_g,
         glycaemic_load=enriched.glycaemic_load,
+        nutrition_source=source,
+        nutrition_verified=verified,
     )
     db.add(meal_log)
     await db.commit()
     await db.refresh(meal_log)
 
     logger.info(
-        "Meal logged: user=%s food=%s portion=%dg calories=%.0f",
+        "Meal logged: user=%s food=%s portion=%dg calories=%.0f source=%s verified=%s",
         current_user.id,
         request.food_name,
         request.portion_grams,
         enriched.total_calories,
+        source,
+        verified,
     )
 
     return SaveMealResponse(
@@ -228,6 +258,8 @@ async def log_meal(
         fat_g=enriched.total_fat_g,
         fiber_g=enriched.total_fiber_g,
         glycaemic_load=enriched.glycaemic_load,
+        nutrition_source=source,
+        nutrition_verified=verified,
     )
 
 
@@ -267,6 +299,12 @@ async def log_meal_manual(
         total_fat_g=request.fat_g,
         total_fiber_g=0,
         glycaemic_load=enriched.glycaemic_load,
+        # User-entered totals, not resolved through the source router at
+        # all — "manual" is its own source, not folded into ifct/usda/
+        # gemini_estimate. Verified=True: it's the user's own number, not a
+        # guess.
+        nutrition_source="manual",
+        nutrition_verified=True,
     )
     db.add(meal_log)
     await db.commit()
