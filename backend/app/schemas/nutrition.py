@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
@@ -82,3 +82,54 @@ class ManualLogRequest(BaseModel):
     protein_g: float
     fat_g: float
     meal_time: datetime
+
+
+# ── Meals list / edit / delete / daily totals (architecture-v3.md §2.5) ───────
+
+class MealSummaryResponse(BaseModel):
+    id: str
+    meal_time: datetime
+    food_name: str
+    calories: Optional[int] = None
+    carbs_g: Optional[float] = None
+    protein_g: Optional[float] = None
+    fat_g: Optional[float] = None
+    fiber_g: Optional[float] = None
+    glycaemic_load: Optional[float] = None
+    nutrition_source: Optional[str] = None
+    nutrition_verified: Optional[bool] = None
+
+
+class MealListResponse(BaseModel):
+    meals: list[MealSummaryResponse]
+
+
+class MealPatchRequest(BaseModel):
+    """All fields optional — only what's supplied is changed. Correcting a
+    mis-logged meal, not resubmitting the whole thing."""
+
+    food_name: Optional[str] = None
+    meal_time: Optional[datetime] = None
+    calories: Optional[float] = Field(None, ge=0)
+    carbs_g: Optional[float] = Field(None, ge=0)
+    protein_g: Optional[float] = Field(None, ge=0)
+    fat_g: Optional[float] = Field(None, ge=0)
+    fiber_g: Optional[float] = Field(None, ge=0)
+
+
+class DailyMealResponse(BaseModel):
+    id: str
+    meal_time: datetime
+    label: str
+    calories: Optional[int] = None
+    carbs_g: Optional[float] = None
+
+
+class DailyTotalsResponse(BaseModel):
+    date: date
+    consumed_kcal: int
+    carbs_g: float
+    protein_g: float
+    fat_g: float
+    fiber_g: float
+    meals: list[DailyMealResponse]

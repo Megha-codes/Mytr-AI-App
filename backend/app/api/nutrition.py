@@ -1,10 +1,11 @@
 import base64
 import logging
 import os
-from datetime import datetime, timezone
+from datetime import date as date_type, datetime, timezone
+from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,19 +15,33 @@ from ..models.user import LifestyleBaseline, User
 from ..schemas.nutrition import (
     AnalyzeImageRequest,
     AnalyzeImageResponse,
+    DailyMealResponse,
+    DailyTotalsResponse,
     FoodItemResponse,
     FoodSearchRequest,
     FoodSearchResponse,
+    MealListResponse,
+    MealPatchRequest,
+    MealSummaryResponse,
     SaveMealRequest,
     SaveMealResponse,
     ManualLogRequest,
     NutritionDataResponse,
 )
 from ..services.gemini_service import GeminiVisionService
+from ..services.health.daily_rollup import local_date, local_date_bounds
 from ..services.meal_enrichment_service import MealEnrichmentService, RawFoodItem
+from ..services.nutrition.meals_today import load_todays_meals, meal_label
 from ..services.nutrition.source_router import resolve_nutrition
 from ..services.usda_service import USDAService
 from .auth import get_current_user
+
+# Sanity cap on GET /meals with no from/to bound — a demo/personal-use app
+# has no legitimate reason to return tens of thousands of rows in one
+# response, and this is cheaper than adding pagination for a gap-filling
+# endpoint (architecture-v3.md §2.5 calls it a read-access gap, not a new
+# feature with its own pagination contract).
+MAX_MEALS_LISTED = 500
 
 logger = logging.getLogger(__name__)
 
@@ -311,3 +326,152 @@ async def log_meal_manual(
     await db.refresh(meal_log)
 
     return {"success": True, "meal_log_id": str(meal_log.id)}
+
+
+# ── GET /meals, PATCH /meals/{id}, DELETE /meals/{id} (architecture-v3.md §2.5) ──
+# meal_logs has always been write-only over the API before this — these three
+# close that gap: list what's been logged, correct a mis-logged entry, undo
+# one entirely.
+
+def _meal_summary(meal: MealLog) -> MealSummaryResponse:
+    return MealSummaryResponse(
+        id=str(meal.id),
+        meal_time=meal.meal_time,
+        food_name=meal_label(meal.food_items),
+        calories=meal.total_calories,
+        carbs_g=float(meal.total_carbs_g) if meal.total_carbs_g is not None else None,
+        protein_g=float(meal.total_protein_g) if meal.total_protein_g is not None else None,
+        fat_g=float(meal.total_fat_g) if meal.total_fat_g is not None else None,
+        fiber_g=float(meal.total_fiber_g) if meal.total_fiber_g is not None else None,
+        glycaemic_load=float(meal.glycaemic_load) if meal.glycaemic_load is not None else None,
+        nutrition_source=meal.nutrition_source,
+        nutrition_verified=meal.nutrition_verified,
+    )
+
+
+async def _load_owned_meal(db: AsyncSession, meal_id: UUID, user_id) -> MealLog:
+    result = await db.execute(
+        select(MealLog).where(MealLog.id == meal_id, MealLog.user_id == user_id)
+    )
+    meal = result.scalar_one_or_none()
+    if meal is None:
+        # Deliberately the same 404 whether the meal doesn't exist at all or
+        # belongs to someone else — confirming "that id exists, just not
+        # yours" would leak other users' meal ids.
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Meal not found")
+    return meal
+
+
+@router.get("/meals", response_model=MealListResponse)
+async def list_meals(
+    from_: Optional[datetime] = Query(None, alias="from"),
+    to: Optional[datetime] = Query(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = select(MealLog).where(MealLog.user_id == current_user.id)
+    if from_ is not None:
+        stmt = stmt.where(MealLog.meal_time >= from_)
+    if to is not None:
+        stmt = stmt.where(MealLog.meal_time < to)
+    stmt = stmt.order_by(MealLog.meal_time.desc()).limit(MAX_MEALS_LISTED)
+
+    result = await db.execute(stmt)
+    meals = result.scalars().all()
+    return MealListResponse(meals=[_meal_summary(m) for m in meals])
+
+
+@router.patch("/meals/{meal_id}", response_model=MealSummaryResponse)
+async def patch_meal(
+    meal_id: UUID,
+    request: MealPatchRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    meal = await _load_owned_meal(db, meal_id, current_user.id)
+
+    if request.food_name is not None:
+        food_items = list(meal.food_items or [{}])
+        food_items[0] = {**food_items[0], "name": request.food_name}
+        meal.food_items = food_items  # reassign (not in-place mutate) so the ORM sees the change
+    if request.meal_time is not None:
+        meal_time = request.meal_time
+        if meal_time.tzinfo is None:
+            meal_time = meal_time.replace(tzinfo=timezone.utc)
+        meal.meal_time = meal_time
+    if request.calories is not None:
+        meal.total_calories = round(request.calories)
+    if request.carbs_g is not None:
+        meal.total_carbs_g = request.carbs_g
+    if request.protein_g is not None:
+        meal.total_protein_g = request.protein_g
+    if request.fat_g is not None:
+        meal.total_fat_g = request.fat_g
+    if request.fiber_g is not None:
+        meal.total_fiber_g = request.fiber_g
+
+    if request.carbs_g is not None or request.food_name is not None:
+        # Carbs and/or the GI lookup key (food name) changed — glycaemic
+        # load is derived from both, so it goes stale otherwise.
+        raw = RawFoodItem(
+            name=meal_label(meal.food_items),
+            portion_grams=0,
+            calories=float(meal.total_calories or 0),
+            carbs_g=float(meal.total_carbs_g or 0),
+            protein_g=float(meal.total_protein_g or 0),
+            fat_g=float(meal.total_fat_g or 0),
+            fiber_g=float(meal.total_fiber_g or 0),
+        )
+        enriched = meal_enrichment_service.enrich([raw])
+        meal.glycaemic_load = enriched.glycaemic_load
+
+    meal.user_corrected = True
+    await db.commit()
+    await db.refresh(meal)
+    return _meal_summary(meal)
+
+
+@router.delete("/meals/{meal_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_meal(
+    meal_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    meal = await _load_owned_meal(db, meal_id, current_user.id)
+    await db.delete(meal)
+    await db.commit()
+
+
+# ── GET /daily (architecture-v3.md §2.5) ──────────────────────────────────────
+# User-JWT twin of GET /device/calories/daily (app/api/device_data.py) —
+# same aggregation (services/nutrition/meals_today.py), same response shape,
+# different auth.
+
+@router.get("/daily", response_model=DailyTotalsResponse)
+async def get_nutrition_daily(
+    date: Optional[date_type] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    target_date = date or local_date(datetime.now(timezone.utc), current_user.timezone)
+    range_start, range_end = local_date_bounds(target_date, current_user.timezone)
+    meals = await load_todays_meals(db, current_user.id, range_start, range_end)
+
+    return DailyTotalsResponse(
+        date=target_date,
+        consumed_kcal=sum(m["total_calories"] or 0 for m in meals),
+        carbs_g=float(sum(m["total_carbs_g"] or 0 for m in meals)),
+        protein_g=float(sum(m["total_protein_g"] or 0 for m in meals)),
+        fat_g=float(sum(m["total_fat_g"] or 0 for m in meals)),
+        fiber_g=float(sum(m["total_fiber_g"] or 0 for m in meals)),
+        meals=[
+            DailyMealResponse(
+                id=m["id"],
+                meal_time=m["meal_time"],
+                label=meal_label(m["food_items"]),
+                calories=m["total_calories"],
+                carbs_g=float(m["total_carbs_g"]) if m["total_carbs_g"] is not None else None,
+            )
+            for m in meals
+        ],
+    )
