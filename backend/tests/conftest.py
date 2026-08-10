@@ -99,12 +99,13 @@ async def build_sqlite_db():
     from app.models.device import Device, DevicePairingCode
     from app.models.secret import EncryptedSecret
     from app.models.health_metric import HealthMetric
+    from app.models.ifct_food import IFCTFood
 
     tables = [
         User.__table__, InsulinProfile.__table__, CGMDevice.__table__,
         LoginAttempt.__table__, WearableDevice.__table__, LifestyleBaseline.__table__,
         ActivityLog.__table__, Device.__table__, DevicePairingCode.__table__,
-        EncryptedSecret.__table__, HealthMetric.__table__,
+        EncryptedSecret.__table__, HealthMetric.__table__, IFCTFood.__table__,
     ]
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
