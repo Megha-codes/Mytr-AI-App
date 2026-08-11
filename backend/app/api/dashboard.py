@@ -186,10 +186,20 @@ async def get_dashboard(
             "meals_logged_today": meals_count,
         },
         "activity": {
-            "steps_today": activity.steps_today if activity else 0,
+            # None (not 0) when no activity_logs row exists for today — no
+            # row means no health sample has ever been projected for this
+            # date, which is a different fact from "synced and genuinely
+            # zero" (e.g. steps_today really is 0 right after midnight).
+            # The frontend must render these as distinct "no data" vs "0"
+            # states (docs/health-data-setup.md).
+            "steps_today": activity.steps_today if activity else None,
             "steps_goal": 10000,
-            "calories_burned": activity.calories_burned if activity else 0,
-            "active_minutes": 0,
+            "calories_burned": activity.calories_burned if activity else None,
+            # No real data source exists for this yet — activity_logs has
+            # no active_minutes column, and nothing computes it from
+            # health_metrics. Always None rather than a fake 0; this is not
+            # "no analytics yet", it's "never implemented at all".
+            "active_minutes": None,
         },
         "challenges": challenges,
     }
