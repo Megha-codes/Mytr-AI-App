@@ -10,8 +10,14 @@ logger = logging.getLogger(__name__)
 
 GEMINI_API_URL = (
     "https://generativelanguage.googleapis.com/v1beta/models"
-    "/gemini-2.0-flash:generateContent"
+    "/gemini-2.5-flash:generateContent"
 )
+# gemini-2.0-flash was retired sometime after this was first written — a
+# live `GET /v1beta/models` call against the production API key (2026-08-11)
+# no longer lists it at all, which is what the "404 Not Found" on every
+# analyze-image/estimate_nutrition call turned out to be. gemini-2.5-flash is
+# the closest still-GA (non "-preview") equivalent: same fast/cheap tier this
+# was chosen for originally, still multimodal (image input + JSON text out).
 
 _PROMPT = (
     "Identify all food items visible in this image. "
