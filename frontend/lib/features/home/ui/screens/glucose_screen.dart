@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import '../../../../core/icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/dark_header.dart';
 import '../../../../core/widgets/app_card.dart';
@@ -175,7 +176,18 @@ class GlucoseScreen extends ConsumerWidget {
                 ),
               ),
 
-              const SizedBox(height: 32),
+              const SizedBox(height: 16),
+
+              // Glucose stays the primary/default view for diabetic-type
+              // users (this whole screen, and the bottom nav landing on
+              // it) — this is just a way *in* to steps/sleep/heart-rate/
+              // HRV, which used to be completely unreachable for this user
+              // type (/activity forcibly redirected back here). Pushed,
+              // not go()'d, so the back button returns here rather than
+              // replacing this as the landing screen.
+              _HealthActivityLink(onTap: () => context.push('/activity')),
+
+              const SizedBox(height: 16),
 
               // Action Buttons
               Row(
@@ -261,6 +273,46 @@ class _ActionBtn extends StatelessWidget {
             label,
             style: AppTheme.labelLarge.copyWith(color: AppTheme.textPrimary),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Entry point into steps/sleep/heart-rate/HRV (ActivityScreen) for
+/// diabetic-type users, who otherwise land on this glucose view by
+/// default and have no bottom-nav tab of their own for it
+/// (main_shell.dart shows exactly one of Glucose/Activity, chosen by user
+/// type). Deliberately a modest link, not a big CTA — glucose stays
+/// primary, this is "also reachable," not a second focal point.
+class _HealthActivityLink extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _HealthActivityLink({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AppCard(
+        child: Row(
+          children: [
+            const Icon(LucideIcons.watch, color: AppTheme.accentCyan),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Health & Activity', style: AppTheme.labelLarge),
+                  Text(
+                    'Steps, sleep, heart rate, and more',
+                    style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight, color: AppTheme.textSecondary),
+          ],
         ),
       ),
     );

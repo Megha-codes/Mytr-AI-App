@@ -131,14 +131,16 @@ final appRouterProvider = Provider<GoRouter>((ref) {
               return null;
             },
           ),
+          // No redirect for non-fitness users here (unlike /glucose above,
+          // which still bounces fitness users away) — diabetic-type users
+          // need this reachable too (steps/sleep/HRV/etc.), just not as
+          // their default landing tab. The bottom nav still only ever
+          // shows one of Glucose/Activity per user type (main_shell.dart);
+          // diabetic users get here via an explicit link on /glucose
+          // instead, glucose stays what they land on by default.
           GoRoute(
             path: '/activity',
             builder: (_, _) => const ActivityScreen(),
-            redirect: (context, state) {
-              final userType = ref.read(userProfileProvider).valueOrNull?.userType;
-              if (userType != null && userType != UserType.fitness) return '/glucose';
-              return null;
-            },
           ),
           GoRoute(path: '/coach',   builder: (_, _) => const CoachScreen()),
           GoRoute(path: '/profile', builder: (_, _) => const ProfileScreen()),

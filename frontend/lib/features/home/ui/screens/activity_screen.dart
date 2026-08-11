@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/dark_header.dart';
@@ -11,6 +12,7 @@ import '../../../../core/widgets/state_feedback_widgets.dart';
 import '../../../../core/health/metric_copy.dart';
 import '../../providers/providers.dart';
 import '../../../profile/providers/goals_provider.dart';
+import '../../../profile/providers/user_profile_provider.dart';
 import '../../../wearables/services/health_sync_service.dart';
 import '../../../wearables/ui/widgets/connect_data_guide_sheet.dart';
 import '../widgets/activity_widgets.dart';
@@ -25,6 +27,13 @@ class ActivityScreen extends ConsumerWidget {
     final healthDaily = ref.watch(healthDailyProvider).valueOrNull ?? const HealthDailyState();
     final deviceState = ref.watch(deviceProvider);
     final stepGoal = (ref.watch(goalsProvider).valueOrNull ?? const Goals()).dailyStepGoal;
+    // Fitness-type users land here as their default bottom-nav tab (no way
+    // back needed — there's nowhere "back" to). Diabetic-type users have no
+    // tab of their own for this screen at all; they only ever arrive by
+    // pushing in from the "Health & Activity" link on /glucose
+    // (glucose_screen.dart), so they need an explicit way back.
+    final userType = ref.watch(userProfileProvider).valueOrNull?.userType;
+    final showBackButton = userType != null && userType != UserType.fitness;
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundCream,
@@ -41,7 +50,7 @@ class ActivityScreen extends ConsumerWidget {
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
           child: activityAsync.when(
-            data: (activity) => _buildContent(context, activity, sleep, healthDaily, deviceState, stepGoal),
+            data: (activity) => _buildContent(context, activity, sleep, healthDaily, deviceState, stepGoal, showBackButton),
             loading: () => const _ActivityLoadingView(),
             error: (e, _) => Center(
               child: InlineErrorCard(
@@ -55,16 +64,22 @@ class ActivityScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, HealthDailyState healthDaily, DeviceState deviceState, int stepGoal) {
+  Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, HealthDailyState healthDaily, DeviceState deviceState, int stepGoal, bool showBackButton) {
     final steps = healthDaily.steps;
     final stepsPercent = stepGoal == 0 || steps == null ? 0.0 : (steps / stepGoal).clamp(0, 1).toDouble();
 
     return Column(
       children: [
-        const DarkHeader(
+        DarkHeader(
           eyebrow: 'ACTIVITY',
           eyebrowColor: AppTheme.brandGreen,
           title: 'Move & track',
+          trailing: showBackButton
+              ? IconButton(
+                  icon: const Icon(LucideIcons.arrowLeft, color: AppTheme.textOnDark),
+                  onPressed: () => context.pop(),
+                )
+              : null,
         ),
 
         Padding(
