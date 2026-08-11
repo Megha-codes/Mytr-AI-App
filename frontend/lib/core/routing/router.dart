@@ -21,6 +21,7 @@ import '../../features/devices/ui/screens/device_management_screen.dart';
 import '../../features/devices/ui/screens/pair_device_screen.dart';
 import '../../features/profile/ui/screens/manage_devices_screen.dart';
 import '../../features/home/models/models.dart';
+import '../../features/analytics/ui/screens/analytics_screen.dart';
 
 // Onboarding screens
 import '../../features/onboarding/ui/screens/intro_screen.dart';
@@ -169,6 +170,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/meals',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (_, _) => const MealsScreen(),
+      ),
+      // Reachable from both glucose_screen.dart and activity_screen.dart —
+      // full screen, no bottom nav (same convention as /meals above), with
+      // its own always-present back button (AnalyticsScreen's DarkHeader).
+      GoRoute(
+        path: '/analytics',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (_, _) => const AnalyticsScreen(),
       ),
       GoRoute(
         path: '/cgm/libre-connect',
