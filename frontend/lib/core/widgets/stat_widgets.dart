@@ -11,6 +11,11 @@ class StatTile extends StatelessWidget {
   final IconData? icon;
   final String? subtext;
 
+  /// When set, the whole tile becomes tappable — used for empty-state
+  /// tiles that need to lead somewhere (grant permission, connect a
+  /// wearable), not for tiles already showing real data.
+  final VoidCallback? onTap;
+
   const StatTile({
     super.key,
     required this.label,
@@ -20,11 +25,12 @@ class StatTile extends StatelessWidget {
     this.textColor = AppTheme.textPrimary,
     this.icon,
     this.subtext,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return AppCard(
+    final card = AppCard(
       backgroundColor: backgroundColor,
       borderColor: Colors.transparent,
       child: Column(
@@ -67,6 +73,13 @@ class StatTile extends StatelessWidget {
           ],
         ],
       ),
+    );
+
+    if (onTap == null) return card;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.cardRadius),
+      child: card,
     );
   }
 }

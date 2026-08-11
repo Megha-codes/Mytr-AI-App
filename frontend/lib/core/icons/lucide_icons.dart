@@ -12,6 +12,7 @@ class LucideIcons {
   static const IconData arrowRight = Icons.arrow_forward;
   static const IconData arrowUp = Icons.arrow_upward;
   static const IconData award = Icons.emoji_events_outlined;
+  static const IconData bedtime = Icons.bedtime_outlined;
   static const IconData bookOpen = Icons.menu_book_outlined;
   static const IconData camera = Icons.camera_alt_outlined;
   static const IconData check = Icons.check;
