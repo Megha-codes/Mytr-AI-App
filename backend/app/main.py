@@ -19,6 +19,7 @@ from .api.dashboard import router as dashboard_router
 from .api.achievements import router as achievements_router
 from .api.coach import router as coach_router
 from .api.reports import router as reports_router
+from .api.analytics import router as analytics_router
 from .api.websockets import status_websocket, realtime_stream
 from .timescale_database import init_timescale_schema
 from .services.cgm.libre_ingestion_service import LibreIngestionService
@@ -79,6 +80,7 @@ app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboar
 app.include_router(achievements_router, prefix="/api/v1/achievements", tags=["achievements"])
 app.include_router(coach_router, prefix="/api/v1/coach", tags=["coach"])
 app.include_router(reports_router, prefix="/api/v1", tags=["reports"])
+app.include_router(analytics_router, prefix="/api/v1", tags=["analytics"])
 app.include_router(status_websocket.router, tags=["websockets"])
 app.include_router(realtime_stream.router, tags=["websockets"])
 
