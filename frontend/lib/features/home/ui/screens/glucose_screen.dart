@@ -178,6 +178,15 @@ class GlucoseScreen extends ConsumerWidget {
 
               const SizedBox(height: 16),
 
+              // The lead differentiator (Phase-1 polish, part 2): how
+              // meals actually moved glucose, plus the rest of the weekly
+              // analytics. Deliberately more visually prominent than the
+              // health/activity link below it — that one's "also
+              // reachable", this one is meant to be noticed.
+              _AnalyticsEntryCard(onTap: () => context.push('/analytics')),
+
+              const SizedBox(height: 16),
+
               // Glucose stays the primary/default view for diabetic-type
               // users (this whole screen, and the bottom nav landing on
               // it) — this is just a way *in* to steps/sleep/heart-rate/
@@ -273,6 +282,57 @@ class _ActionBtn extends StatelessWidget {
             label,
             style: AppTheme.labelLarge.copyWith(color: AppTheme.textPrimary),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The lead differentiator's entry point — food-glucose correlation plus
+/// the rest of the weekly analytics screen. Deliberately styled bigger
+/// and bolder than _HealthActivityLink below: this is meant to be
+/// noticed, not just technically reachable.
+class _AnalyticsEntryCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AnalyticsEntryCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            colors: [AppTheme.brandGreen, AppTheme.accentCyan],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            const Icon(LucideIcons.sparkles, color: Colors.white, size: 26),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'See how food affects your glucose',
+                    style: AppTheme.labelLarge.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Weekly trends, time-in-range, and insights',
+                    style: AppTheme.bodySmall.copyWith(color: Colors.white.withValues(alpha: 0.85)),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight, color: Colors.white),
+          ],
         ),
       ),
     );

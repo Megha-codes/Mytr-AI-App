@@ -191,6 +191,14 @@ class ActivityScreen extends ConsumerWidget {
 
               const SizedBox(height: 16),
 
+              // Full weekly analytics (Phase-1 polish, part 2) — same
+              // destination glucose_screen.dart's more prominent card
+              // leads to, reachable from here too since this is where
+              // health-trend-minded users already are.
+              _AnalyticsLink(onTap: () => context.push('/analytics')),
+
+              const SizedBox(height: 16),
+
               if (sleep.hasData)
                 AppCard(
                   child: Column(
@@ -313,6 +321,40 @@ class _SyncPill extends StatelessWidget {
             style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _AnalyticsLink extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _AnalyticsLink({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AppCard(
+        child: Row(
+          children: [
+            const Icon(LucideIcons.sparkles, color: AppTheme.brandGreen),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Weekly analytics', style: AppTheme.labelLarge.copyWith(color: AppTheme.textPrimary)),
+                  Text(
+                    'Trends, food-glucose correlation, and insights',
+                    style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(LucideIcons.chevronRight, color: AppTheme.textSecondary),
+          ],
+        ),
       ),
     );
   }
