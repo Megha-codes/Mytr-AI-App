@@ -110,28 +110,49 @@ class _WearablesGridState extends ConsumerState<_WearablesGrid> {
     final label = wearables?.healthName ??
         (!kIsWeb && Platform.isIOS ? 'Apple Health' : 'Google Health Connect / Fitbit');
 
-    return GestureDetector(
-      onTap: _connecting ? null : _handleTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: isConnected ? AppColors.nearBlack : AppColors.borderLight, width: isConnected ? 1.5 : 1),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: _connecting ? null : _handleTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isConnected ? AppColors.nearBlack : AppColors.borderLight, width: isConnected ? 1.5 : 1),
+            ),
+            child: Row(
+              children: [
+                const Text('⌚', style: TextStyle(fontSize: 18)),
+                const SizedBox(width: 10),
+                Expanded(child: Text(label, style: const TextStyle(color: AppColors.nearBlack, fontSize: 10, fontWeight: FontWeight.bold))),
+                if (_connecting)
+                  const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))
+                else if (isConnected)
+                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.limeAccent, shape: BoxShape.circle)),
+              ],
+            ),
+          ),
         ),
-        child: Row(
-          children: [
-            const Text('⌚', style: TextStyle(fontSize: 18)),
-            const SizedBox(width: 10),
-            Expanded(child: Text(label, style: const TextStyle(color: AppColors.nearBlack, fontSize: 10, fontWeight: FontWeight.bold))),
-            if (_connecting)
-              const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5))
-            else if (isConnected)
-              Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppColors.limeAccent, shape: BoxShape.circle)),
-          ],
-        ),
-      ),
+        // The most-missed step (docs/health-data-setup.md §4): granting
+        // this permission alone does NOT make data appear if the wearable
+        // has one — Fitbit/Samsung Health etc. only write into Health
+        // Connect once their own sync toggle is turned on separately.
+        // Surfaced right here, right after connecting, instead of only
+        // showing up later as an unexplained empty card.
+        if (isConnected)
+          Padding(
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              "Have a Fitbit, Samsung Health, or similar? Open that app → "
+              'Settings → Health Connect and turn on syncing, or you won\'t '
+              'see any data here yet.',
+              style: const TextStyle(color: AppColors.textSecondary, fontSize: 10, height: 1.4),
+            ),
+          ),
+      ],
     );
   }
 

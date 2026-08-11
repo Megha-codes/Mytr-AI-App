@@ -4,6 +4,8 @@ import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/stat_widgets.dart';
 import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
+import '../../../../core/health/metric_copy.dart';
+import '../../../wearables/ui/widgets/connect_data_guide_sheet.dart';
 import '../../providers/providers.dart';
 
 class DiabeticHeaderContent extends ConsumerWidget {
@@ -100,34 +102,41 @@ class FitnessHeaderContent extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final activityAsync = ref.watch(activityProvider);
+    // Sourced from GET /health/daily (healthDailyProvider), not
+    // activityProvider/ActivityState — that path still zero-fills steps/
+    // calories in its Hive-cached model (see dashboard_provider.dart), so
+    // a metric-aware "no data" state can't be expressed through it without
+    // a much larger change to a Hive-persisted type. healthDailyProvider
+    // already preserves the null-vs-zero distinction end to end.
+    final healthDailyAsync = ref.watch(healthDailyProvider);
 
-    return activityAsync.when(
-      data: (activity) => Row(
+    return healthDailyAsync.when(
+      data: (healthDaily) => Row(
         children: [
           Expanded(
-            child: StatTile(
-              label: 'Steps',
-              value: '${activity.stepsToday}',
-              backgroundColor: AppTheme.backgroundDark.withValues(alpha: 0.5),
-              textColor: AppTheme.accentOrange,
+            child: _metricTile(
+              context,
+              metric: stepsMetric,
+              value: healthDaily.steps,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
-            child: StatTile(
-              label: 'Calories',
-              value: '${activity.caloriesBurned}',
-              backgroundColor: AppTheme.backgroundDark.withValues(alpha: 0.5),
-              textColor: AppTheme.accentOrange,
+            child: _metricTile(
+              context,
+              metric: caloriesMetric,
+              value: healthDaily.activeEnergyKcal,
             ),
           ),
           const SizedBox(width: 12),
           Expanded(
+            // No real data source exists for active minutes at all (see
+            // backend/app/api/dashboard.py) — always the empty state, no
+            // tap-through, since nothing the user does would fix it.
             child: StatTile(
-              label: 'Active',
-              value: '${activity.activeMinutes}',
-              unit: 'min',
+              label: activeMinutesMetric.label,
+              value: '—',
+              subtext: activeMinutesMetric.emptyMessage,
               backgroundColor: AppTheme.backgroundDark.withValues(alpha: 0.5),
               textColor: AppTheme.accentOrange,
             ),
@@ -145,8 +154,23 @@ class FitnessHeaderContent extends ConsumerWidget {
       ),
       error: (e, _) => InlineErrorCard(
         message: 'Sync error',
-        onRetry: () => ref.invalidate(activityProvider),
+        onRetry: () => ref.invalidate(healthDailyProvider),
       ),
+    );
+  }
+
+  Widget _metricTile(
+    BuildContext context, {
+    required MetricInfo metric,
+    required double? value,
+  }) {
+    return StatTile(
+      label: metric.label,
+      value: value != null ? '${value.round()}' : '—',
+      subtext: value == null ? metric.emptyMessage : null,
+      backgroundColor: AppTheme.backgroundDark.withValues(alpha: 0.5),
+      textColor: AppTheme.accentOrange,
+      onTap: value == null ? () => showConnectDataGuide(context, highlightMetric: metric) : null,
     );
   }
 }

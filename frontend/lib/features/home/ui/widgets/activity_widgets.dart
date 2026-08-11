@@ -124,20 +124,27 @@ class SleepStageBar extends StatelessWidget {
 }
 
 class StepsStrip extends StatelessWidget {
-  final int steps;
+  /// Null means no Health Connect/HealthKit sample for today at all — not
+  /// a genuine 0. Steps is phone-only (no wearable needed), so this is
+  /// specifically a "permission not granted / not synced yet" state.
+  final int? steps;
   final int goal;
   final double percent;
+
+  /// Only used when [steps] is null.
+  final VoidCallback? onConnect;
 
   const StepsStrip({
     super.key,
     required this.steps,
     required this.goal,
     required this.percent,
+    this.onConnect,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final content = Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: AppTheme.brandGreen,
@@ -146,21 +153,39 @@ class StepsStrip extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('STEPS TODAY', style: AppTheme.labelSmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6))),
-              const SizedBox(height: 4),
-              Text('$steps', style: AppTheme.displayLarge.copyWith(color: AppTheme.textPrimary, fontSize: 36)),
-              Text('of $goal goal', style: AppTheme.bodySmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6))),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('STEPS TODAY', style: AppTheme.labelSmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6))),
+                const SizedBox(height: 4),
+                if (steps != null) ...[
+                  Text('$steps', style: AppTheme.displayLarge.copyWith(color: AppTheme.textPrimary, fontSize: 36)),
+                  Text('of $goal goal', style: AppTheme.bodySmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6))),
+                ] else ...[
+                  Text('No data', style: AppTheme.displayMedium.copyWith(color: AppTheme.textPrimary)),
+                  Text(
+                    'Grant Health permission to see steps.',
+                    style: AppTheme.bodySmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6)),
+                  ),
+                ],
+              ],
+            ),
           ),
-          CircularProgressRing(
-            progress: percent,
-            label: '${(percent * 100).toInt()}%',
-          ),
+          if (steps != null)
+            CircularProgressRing(
+              progress: percent,
+              label: '${(percent * 100).toInt()}%',
+            ),
         ],
       ),
+    );
+
+    if (steps != null || onConnect == null) return content;
+    return InkWell(
+      onTap: onConnect,
+      borderRadius: BorderRadius.circular(16),
+      child: content,
     );
   }
 }

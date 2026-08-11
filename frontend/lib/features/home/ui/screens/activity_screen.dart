@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import '../../../../core/icons/lucide_icons.dart';
 import '../../../../core/theme/app_theme.dart';
 import '../../../../core/widgets/dark_header.dart';
@@ -9,9 +8,11 @@ import '../../../../core/widgets/stat_widgets.dart';
 import '../../../../core/widgets/weekly_bar_chart.dart';
 import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../../core/widgets/state_feedback_widgets.dart';
+import '../../../../core/health/metric_copy.dart';
 import '../../providers/providers.dart';
 import '../../../profile/providers/goals_provider.dart';
 import '../../../wearables/services/health_sync_service.dart';
+import '../../../wearables/ui/widgets/connect_data_guide_sheet.dart';
 import '../widgets/activity_widgets.dart';
 
 class ActivityScreen extends ConsumerWidget {
@@ -55,7 +56,8 @@ class ActivityScreen extends ConsumerWidget {
   }
 
   Widget _buildContent(BuildContext context, ActivityState activity, SleepState sleep, HealthDailyState healthDaily, DeviceState deviceState, int stepGoal) {
-    final stepsPercent = stepGoal == 0 ? 0.0 : (activity.stepsToday / stepGoal).clamp(0, 1).toDouble();
+    final steps = healthDaily.steps;
+    final stepsPercent = stepGoal == 0 || steps == null ? 0.0 : (steps / stepGoal).clamp(0, 1).toDouble();
 
     return Column(
       children: [
@@ -70,9 +72,10 @@ class ActivityScreen extends ConsumerWidget {
           child: Transform.translate(
             offset: const Offset(0, -20),
             child: StepsStrip(
-              steps: activity.stepsToday,
+              steps: steps?.round(),
               goal: stepGoal,
               percent: stepsPercent,
+              onConnect: () => showConnectDataGuide(context, highlightMetric: stepsMetric),
             ),
           ),
         ),
@@ -84,31 +87,35 @@ class ActivityScreen extends ConsumerWidget {
               Row(
                 children: [
                   Expanded(
-                    child: StatTile(
-                      label: 'Calories',
-                      value: '${activity.caloriesBurned}',
+                    child: _healthStatTile(
+                      context,
+                      metric: caloriesMetric,
+                      value: healthDaily.activeEnergyKcal,
                       textColor: AppTheme.accentOrange,
-                      backgroundColor: Colors.white,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
+                    // No real data source exists for active minutes at all
+                    // (see backend/app/api/dashboard.py) — always the empty
+                    // state, no tap-through, since nothing the user does
+                    // would fix it.
                     child: StatTile(
-                      label: 'Active',
-                      value: '${activity.activeMinutes}',
-                      unit: 'min',
+                      label: activeMinutesMetric.label,
+                      value: '—',
+                      subtext: activeMinutesMetric.emptyMessage,
                       textColor: AppTheme.accentCyan,
                       backgroundColor: Colors.white,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: StatTile(
-                      label: 'Heart Rate',
-                      value: '${activity.heartRate}',
+                    child: _healthStatTile(
+                      context,
+                      metric: heartRateMetric,
+                      value: healthDaily.heartRate,
                       unit: 'bpm',
                       textColor: AppTheme.glucoseHyper,
-                      backgroundColor: Colors.white,
                     ),
                   ),
                 ],
@@ -116,32 +123,30 @@ class ActivityScreen extends ConsumerWidget {
 
               const SizedBox(height: 12),
 
-              // Resting HR and HRV have no home in ActivityState (that's
-              // still dashboard/activity_logs-sourced) — they come straight
-              // from GET /health/daily, and render "No data" rather than 0
-              // when the day has no sample, per §2.4's "0 and no data are
-              // different facts" rule the backend already enforces.
+              // Resting HR and HRV come straight from GET /health/daily —
+              // "no data" (not 0) when the day has no sample, per
+              // docs/health-data-setup.md §2: neither is producible by a
+              // phone alone, so the empty state says so specifically
+              // rather than a generic "no data yet".
               Row(
                 children: [
                   Expanded(
-                    child: StatTile(
-                      label: 'Resting HR',
-                      value: healthDaily.restingHeartRate != null ? '${healthDaily.restingHeartRate!.round()}' : '—',
-                      unit: healthDaily.restingHeartRate != null ? 'bpm' : null,
-                      subtext: healthDaily.restingHeartRate == null ? 'No data yet' : null,
+                    child: _healthStatTile(
+                      context,
+                      metric: restingHeartRateMetric,
+                      value: healthDaily.restingHeartRate,
+                      unit: 'bpm',
                       textColor: AppTheme.glucoseHyper,
-                      backgroundColor: Colors.white,
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
-                    child: StatTile(
-                      label: 'HRV',
-                      value: healthDaily.hrv != null ? '${healthDaily.hrv!.round()}' : '—',
-                      unit: healthDaily.hrv != null ? 'ms' : null,
-                      subtext: healthDaily.hrv == null ? 'No data yet' : null,
+                    child: _healthStatTile(
+                      context,
+                      metric: hrvMetric,
+                      value: healthDaily.hrv,
+                      unit: 'ms',
                       textColor: AppTheme.brandGreen,
-                      backgroundColor: Colors.white,
                     ),
                   ),
                 ],
@@ -197,9 +202,15 @@ class ActivityScreen extends ConsumerWidget {
                         ),
                     ],
                   ),
-                ),
+                )
+              else
+                // Previously just vanished with no explanation at all when
+                // there was no sleep sample — now says specifically why
+                // (needs a wearable worn overnight, not a permission gap)
+                // and leads somewhere.
+                _EmptyMetricCard(metric: sleepMetric, icon: LucideIcons.bedtime),
 
-              if (sleep.hasData) const SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               if (deviceState.connectedWearables.isNotEmpty)
                 _SyncPill(device: deviceState.connectedWearables.first)
@@ -211,6 +222,24 @@ class ActivityScreen extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _healthStatTile(
+    BuildContext context, {
+    required MetricInfo metric,
+    required double? value,
+    Color textColor = AppTheme.textPrimary,
+    String? unit,
+  }) {
+    return StatTile(
+      label: metric.label,
+      value: value != null ? '${value.round()}' : '—',
+      unit: value != null ? unit : null,
+      subtext: value == null ? metric.emptyMessage : null,
+      textColor: textColor,
+      backgroundColor: Colors.white,
+      onTap: value == null ? () => showConnectDataGuide(context, highlightMetric: metric) : null,
     );
   }
 }
@@ -294,9 +323,53 @@ class _ConnectPrompt extends StatelessWidget {
             ),
           ),
           IconButton(
-            onPressed: () => context.push('/profile'),
+            // Opens the full guidance flow, not just a bare navigation —
+            // this is often someone's first "nothing is showing up" moment,
+            // and the sync-toggle gotcha (docs/health-data-setup.md §4)
+            // belongs right here, not just buried in Manage Devices.
+            onPressed: () => showConnectDataGuide(context),
             icon: const Icon(LucideIcons.chevronRight, color: AppTheme.accentCyan),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A full-card empty state for a metric that deserves more room than a
+/// StatTile's subtext — currently just the sleep card, which used to
+/// vanish silently with no explanation at all when there was no sample.
+class _EmptyMetricCard extends StatelessWidget {
+  final MetricInfo metric;
+  final IconData icon;
+
+  const _EmptyMetricCard({required this.metric, required this.icon});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      child: Row(
+        children: [
+          Icon(icon, color: AppTheme.textSecondary),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(metric.label, style: AppTheme.titleLarge),
+                const SizedBox(height: 4),
+                Text(
+                  metric.emptyMessage,
+                  style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+          if (metric.ctaLabel != null)
+            IconButton(
+              onPressed: () => showConnectDataGuide(context, highlightMetric: metric),
+              icon: const Icon(LucideIcons.chevronRight, color: AppTheme.textSecondary),
+            ),
         ],
       ),
     );
