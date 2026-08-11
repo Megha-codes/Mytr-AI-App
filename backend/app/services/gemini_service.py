@@ -8,16 +8,19 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-GEMINI_API_URL = (
-    "https://generativelanguage.googleapis.com/v1beta/models"
-    "/gemini-2.5-flash:generateContent"
-)
-# gemini-2.0-flash was retired sometime after this was first written — a
-# live `GET /v1beta/models` call against the production API key (2026-08-11)
-# no longer lists it at all, which is what the "404 Not Found" on every
-# analyze-image/estimate_nutrition call turned out to be. gemini-2.5-flash is
-# the closest still-GA (non "-preview") equivalent: same fast/cheap tier this
-# was chosen for originally, still multimodal (image input + JSON text out).
+# Google retired the generateContent REST API this model was originally
+# written against (gemini-2.0-flash, then gemini-2.5-flash, both 404 as of
+# 2026-08-11 — "no longer available to new users") in favor of the
+# Interactions API. Different endpoint, different request/response shape
+# entirely — this isn't just a model-name swap.
+#
+# Verified live against the production key before writing this (not from
+# docs alone, which gave inconsistent v1beta vs v1beta2 paths):
+#   curl -X POST ".../v1beta/interactions?key=..." -d '{"model":
+#   "gemini-3.6-flash", "input": [{"type": "text", "text": "..."}]}'
+# returned a real 200 with a completed interaction. v1beta (not v1beta2).
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+GEMINI_MODEL = "gemini-3.6-flash"
 
 _PROMPT = (
     "Identify all food items visible in this image. "
@@ -68,24 +71,11 @@ class GeminiVisionService:
         image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         payload = {
-            "contents": [
-                {
-                    "parts": [
-                        {"text": _PROMPT},
-                        {
-                            "inline_data": {
-                                "mime_type": "image/jpeg",
-                                "data": image_b64,
-                            }
-                        },
-                    ]
-                }
+            "model": GEMINI_MODEL,
+            "input": [
+                {"type": "text", "text": _PROMPT},
+                {"type": "image", "mime_type": "image/jpeg", "data": image_b64},
             ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "topP": 0.8,
-                "maxOutputTokens": 1024,
-            },
         }
 
         async with httpx.AsyncClient(timeout=30.0) as client:
@@ -95,14 +85,7 @@ class GeminiVisionService:
             )
             response.raise_for_status()
 
-        data = response.json()
-
-        try:
-            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-        except (KeyError, IndexError) as exc:
-            logger.error("Unexpected Gemini response structure: %s", data)
-            raise ValueError("Gemini returned an unexpected response") from exc
-
+        raw_text = self._extract_output_text(response.json())
         items = self._parse_json(raw_text)
         return [
             GeminiFoodItem(
@@ -126,14 +109,10 @@ class GeminiVisionService:
             return None
 
         payload = {
-            "contents": [
-                {"parts": [{"text": _NUTRITION_ESTIMATE_PROMPT.format(food_name=food_name)}]}
+            "model": GEMINI_MODEL,
+            "input": [
+                {"type": "text", "text": _NUTRITION_ESTIMATE_PROMPT.format(food_name=food_name)}
             ],
-            "generationConfig": {
-                "temperature": 0.2,
-                "topP": 0.8,
-                "maxOutputTokens": 256,
-            },
         }
 
         try:
@@ -143,8 +122,7 @@ class GeminiVisionService:
                     json=payload,
                 )
                 response.raise_for_status()
-            data = response.json()
-            raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+            raw_text = self._extract_output_text(response.json())
             parsed = self._parse_json_object(raw_text)
             return GeminiNutritionEstimate(
                 calories_per_100g=float(parsed.get("calories", 0) or 0),
@@ -156,6 +134,28 @@ class GeminiVisionService:
         except Exception:
             logger.warning("Gemini nutrition estimate failed for %r", food_name, exc_info=True)
             return None
+
+    @staticmethod
+    def _extract_output_text(data: dict) -> str:
+        """Pulls the model's text out of an Interactions API response.
+
+        There's no top-level `output_text` convenience field in the raw
+        REST JSON (that only exists in Google's client SDKs) — the real
+        text lives inside `steps`, on whichever step has `type ==
+        "model_output"` (earlier steps can be `"thought"` entries, which
+        this must skip). Joins multiple text content parts on that step,
+        defensively, in case a response ever splits its output across more
+        than one.
+        """
+        try:
+            steps = data["steps"]
+            model_output = next(s for s in steps if s.get("type") == "model_output")
+            return "".join(
+                part["text"] for part in model_output["content"] if part.get("type") == "text"
+            )
+        except (KeyError, StopIteration, TypeError) as exc:
+            logger.error("Unexpected Gemini response structure: %s", data)
+            raise ValueError("Gemini returned an unexpected response") from exc
 
     @staticmethod
     def _strip_markdown_fences(text: str) -> str:

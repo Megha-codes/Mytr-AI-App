@@ -26,7 +26,17 @@ def _patch_client(monkeypatch, handler):
 
 
 def _gemini_response(text: str) -> dict:
-    return {"candidates": [{"content": {"parts": [{"text": text}]}}]}
+    # Interactions API shape (not the old generateContent one) — a
+    # "thought" step is typical before the real "model_output" step, so
+    # include one to guard against a regression back to just picking
+    # steps[0] instead of finding the model_output entry specifically.
+    return {
+        "id": "v1_test", "status": "completed", "object": "interaction",
+        "steps": [
+            {"type": "thought", "signature": "..."},
+            {"type": "model_output", "content": [{"type": "text", "text": text}]},
+        ],
+    }
 
 
 async def test_returns_none_without_an_api_key():
@@ -90,7 +100,9 @@ async def test_returns_none_on_http_error(monkeypatch):
 
 async def test_returns_none_on_unexpected_response_shape(monkeypatch):
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(200, json={"candidates": []})
+        # Well-formed interaction envelope, but no model_output step in it —
+        # e.g. the model only ever "thought" and never actually answered.
+        return httpx.Response(200, json={"steps": [{"type": "thought"}]})
 
     _patch_client(monkeypatch, handler)
     service = GeminiVisionService(api_key="test-key")
