@@ -39,6 +39,10 @@ CGMState _parseCgm(Map<String, dynamic> g) {
   final trendStr = g['trend'] as String?;
   final tirRaw = g['time_in_range_24h'] as double?;
   final lastUpdatedStr = g['last_updated'] as String?;
+  // Previously hardcoded to all-zero here regardless of what the backend
+  // sent (it didn't send anything at all) — now a real breakdown, null
+  // only when there are no readings in the 24h window to compute it from.
+  final breakdown = g['time_in_range_breakdown'] as Map<String, dynamic>?;
 
   return CGMState(
     currentGlucose: rawValue ?? 0,
@@ -48,7 +52,13 @@ CGMState _parseCgm(Map<String, dynamic> g) {
     // TIR is 0.0–1.0 from backend; display expects 0–100
     timeInRange24h: tirRaw != null ? tirRaw * 100 : 0.0,
     averageGlucose28Days: 0.0,
-    timeInRangeBreakdown: TIRBreakdown(below: 0.0, target: 0.0, above: 0.0),
+    timeInRangeBreakdown: breakdown != null
+        ? TIRBreakdown(
+            below: (breakdown['below'] as num).toDouble(),
+            target: (breakdown['target'] as num).toDouble(),
+            above: (breakdown['above'] as num).toDouble(),
+          )
+        : TIRBreakdown(below: 0.0, target: 0.0, above: 0.0),
     last24Hours: const [],
   );
 }

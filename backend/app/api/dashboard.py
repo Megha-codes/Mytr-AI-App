@@ -70,6 +70,7 @@ async def get_dashboard(
     trend = None
     trend_arrow = None
     time_in_range_24h = None
+    tir_breakdown = None
     last_updated = None
     is_connected = False
 
@@ -88,10 +89,21 @@ async def get_dashboard(
             else:
                 trend, trend_arrow = "STABLE", "→"
 
-        in_range_count = sum(
-            1 for r in readings_24h if target_min <= r.value_mgdl <= target_max
-        )
-        time_in_range_24h = round(in_range_count / len(readings_24h), 4)
+        n = len(readings_24h)
+        below_count = sum(1 for r in readings_24h if r.value_mgdl < target_min)
+        above_count = sum(1 for r in readings_24h if r.value_mgdl > target_max)
+        in_range_count = n - below_count - above_count
+        time_in_range_24h = round(in_range_count / n, 4)
+        # Previously hardcoded to {below: 0, target: 0, above: 0} on the
+        # frontend regardless of real data — this is the actual breakdown,
+        # not a placeholder. Fractions (0-1), matching time_in_range_24h's
+        # own convention; the frontend already expects that shape
+        # (TIRBreakdown/TIRStackedBar in models.dart).
+        tir_breakdown = {
+            "below": round(below_count / n, 4),
+            "target": round(in_range_count / n, 4),
+            "above": round(above_count / n, 4),
+        }
 
     # ── Today's meals from Postgres ───────────────────────────────────────────
     m_result = await db.execute(
@@ -174,6 +186,7 @@ async def get_dashboard(
             "trend": trend,
             "trend_arrow": trend_arrow,
             "time_in_range_24h": time_in_range_24h,
+            "time_in_range_breakdown": tir_breakdown,
             "last_updated": last_updated,
             "is_connected": is_connected,
         },
