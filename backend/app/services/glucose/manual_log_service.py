@@ -35,6 +35,16 @@ async def log_manual_glucose_reading(user_id, value_mgdl: int, timestamp: dateti
             device_type="MANUAL",
             is_continuous=False,
             recorded_at=recorded_at,
+            # Pre-existing bug, found while adding this function's first
+            # real test: this was never set, so every manual reading has
+            # silently stored source='LIBRE' (the column's server_default)
+            # instead — contradicting the fanout event a few lines down,
+            # which *does* correctly say "MANUAL". The persisted row and
+            # the live-streamed frame have been telling two different
+            # stories about the same reading since this endpoint was
+            # built. Fixed here rather than left as a chatbot-only fix,
+            # since POST /glucose/manual shares this exact function.
+            source="MANUAL",
         )
         ts_session.add(reading)
         await ts_session.commit()

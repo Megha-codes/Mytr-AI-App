@@ -21,6 +21,7 @@ from .api.coach import router as coach_router
 from .api.reports import router as reports_router
 from .api.analytics import router as analytics_router
 from .api.water import router as water_router
+from .api.chat import router as chat_router
 from .api.websockets import status_websocket, realtime_stream
 from .timescale_database import init_timescale_schema
 from .services.cgm.libre_ingestion_service import LibreIngestionService
@@ -83,6 +84,7 @@ app.include_router(coach_router, prefix="/api/v1/coach", tags=["coach"])
 app.include_router(reports_router, prefix="/api/v1", tags=["reports"])
 app.include_router(analytics_router, prefix="/api/v1", tags=["analytics"])
 app.include_router(water_router, prefix="/api/v1", tags=["water"])
+app.include_router(chat_router, prefix="/api/v1", tags=["chat"])
 app.include_router(status_websocket.router, tags=["websockets"])
 app.include_router(realtime_stream.router, tags=["websockets"])
 
