@@ -15,6 +15,7 @@ import '../../../profile/providers/goals_provider.dart';
 import '../../../profile/providers/user_profile_provider.dart';
 import '../../../wearables/services/health_sync_service.dart';
 import '../../../wearables/ui/widgets/connect_data_guide_sheet.dart';
+import '../../../water/ui/widgets/water_card.dart';
 import '../widgets/activity_widgets.dart';
 
 class ActivityScreen extends ConsumerWidget {
@@ -166,6 +167,10 @@ class ActivityScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+
+              const SizedBox(height: 16),
+
+              const WaterCard(),
 
               const SizedBox(height: 16),
 

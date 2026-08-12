@@ -198,6 +198,22 @@ class AnalyticsScreen extends ConsumerWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: MetricTrendMiniChart(
+                      label: 'Water',
+                      trend: analytics.healthTrends.waterMl,
+                      color: AppTheme.accentCyan,
+                      formatValue: (v) => '${(v / 1000).toStringAsFixed(1)}L',
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(child: SizedBox.shrink()),
+                ],
+              ),
 
               const SizedBox(height: 24),
 

@@ -152,12 +152,14 @@ class HealthTrends {
   final HealthMetricTrend sleepMinutes;
   final HealthMetricTrend hrv;
   final HealthMetricTrend restingHeartRate;
+  final HealthMetricTrend waterMl;
 
   const HealthTrends({
     required this.steps,
     required this.sleepMinutes,
     required this.hrv,
     required this.restingHeartRate,
+    required this.waterMl,
   });
 
   factory HealthTrends.fromJson(Map<String, dynamic> json) => HealthTrends(
@@ -165,6 +167,7 @@ class HealthTrends {
         sleepMinutes: HealthMetricTrend.fromJson(json['sleep_minutes'] as Map<String, dynamic>),
         hrv: HealthMetricTrend.fromJson(json['hrv'] as Map<String, dynamic>),
         restingHeartRate: HealthMetricTrend.fromJson(json['resting_heart_rate'] as Map<String, dynamic>),
+        waterMl: HealthMetricTrend.fromJson(json['water_ml'] as Map<String, dynamic>),
       );
 }
 
