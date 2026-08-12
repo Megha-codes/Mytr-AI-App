@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-import app.api.glucose as glucose_module
+import app.services.glucose.manual_log_service as manual_log_module
 from app.api.glucose import ManualGlucoseRequest, log_manual_glucose
 from app.services.realtime.fanout_hub import FanoutHub
 
@@ -21,8 +21,8 @@ async def test_manual_entry_publishes_a_glucose_reading_frame(monkeypatch):
 
     hub = FanoutHub()
     queue = hub.subscribe(user.id)
-    monkeypatch.setattr(glucose_module, "fanout_hub", hub)
-    monkeypatch.setattr(glucose_module, "TimescaleSessionLocal", ts_session_factory)
+    monkeypatch.setattr(manual_log_module, "fanout_hub", hub)
+    monkeypatch.setattr(manual_log_module, "TimescaleSessionLocal", ts_session_factory)
 
     timestamp = datetime.now(timezone.utc)
     async with db_session_factory() as db:
@@ -53,8 +53,8 @@ async def test_manual_and_libre_readings_share_the_same_envelope_shape(monkeypat
 
     hub = FanoutHub()
     queue = hub.subscribe(user.id)
-    monkeypatch.setattr(glucose_module, "fanout_hub", hub)
-    monkeypatch.setattr(glucose_module, "TimescaleSessionLocal", ts_session_factory)
+    monkeypatch.setattr(manual_log_module, "fanout_hub", hub)
+    monkeypatch.setattr(manual_log_module, "TimescaleSessionLocal", ts_session_factory)
 
     async with db_session_factory() as db:
         await log_manual_glucose(

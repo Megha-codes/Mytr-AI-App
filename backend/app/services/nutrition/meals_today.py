@@ -14,10 +14,14 @@ this is the same code path, not a test-only workaround.
 from __future__ import annotations
 
 import json
-from datetime import datetime
+from datetime import date as date_type, datetime
+from typing import Optional
 
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from ...models.meal_log import MealLog
+from ...schemas.nutrition import DailyMealResponse, DailyTotalsResponse
 
 
 async def load_todays_meals(db: AsyncSession, user_id, start: datetime, end: datetime) -> list[dict]:
@@ -56,3 +60,56 @@ def meal_label(food_items: list) -> str:
     if food_items and isinstance(food_items[0], dict) and food_items[0].get("name"):
         return food_items[0]["name"]
     return "Meal"
+
+
+async def list_meals_for_user(
+    db: AsyncSession, user_id, from_: Optional[datetime] = None,
+    to: Optional[datetime] = None, limit: int = 500,
+) -> list[MealLog]:
+    """Shared by GET /nutrition/meals and the analytics chatbot's
+    get_meals tool. Unlike load_todays_meals above, this goes through the
+    MealLog ORM directly rather than raw SQL — proven safe against the
+    sqlite test harness (tests/conftest.py's meal_logs mirror table is
+    hand-written specifically to support ORM reads/writes, not just raw
+    SQL), and GET /nutrition/meals has used the ORM here since it was
+    added, with its own passing tests. load_todays_meals predates that and
+    was never revisited; the two aren't inconsistent so much as written at
+    different times.
+    """
+    stmt = select(MealLog).where(MealLog.user_id == user_id)
+    if from_ is not None:
+        stmt = stmt.where(MealLog.meal_time >= from_)
+    if to is not None:
+        stmt = stmt.where(MealLog.meal_time < to)
+    stmt = stmt.order_by(MealLog.meal_time.desc()).limit(limit)
+
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
+
+
+async def daily_nutrition_totals(
+    db: AsyncSession, user_id, start: datetime, end: datetime, target_date: date_type,
+) -> DailyTotalsResponse:
+    """Shared by GET /nutrition/daily and the chatbot's get_daily_nutrition
+    tool. [start, end) is the caller-computed local-day window (see
+    services/health/daily_rollup.py's local_date_bounds)."""
+    meals = await load_todays_meals(db, user_id, start, end)
+
+    return DailyTotalsResponse(
+        date=target_date,
+        consumed_kcal=sum(m["total_calories"] or 0 for m in meals),
+        carbs_g=float(sum(m["total_carbs_g"] or 0 for m in meals)),
+        protein_g=float(sum(m["total_protein_g"] or 0 for m in meals)),
+        fat_g=float(sum(m["total_fat_g"] or 0 for m in meals)),
+        fiber_g=float(sum(m["total_fiber_g"] or 0 for m in meals)),
+        meals=[
+            DailyMealResponse(
+                id=m["id"],
+                meal_time=m["meal_time"],
+                label=meal_label(m["food_items"]),
+                calories=m["total_calories"],
+                carbs_g=float(m["total_carbs_g"]) if m["total_carbs_g"] is not None else None,
+            )
+            for m in meals
+        ],
+    )

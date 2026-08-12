@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 
-import app.api.glucose as glucose_module
+import app.services.glucose.manual_log_service as manual_log_module
 import httpx
 from app.api.glucose import ManualGlucoseRequest, log_manual_glucose
 from app.core.encryption import encrypt
@@ -74,8 +74,8 @@ async def test_fanout_hub_proof(monkeypatch):
     group_accounts = group_by_credential(accounts)[LIBRE_EMAIL]
 
     hub = FanoutHub()
-    monkeypatch.setattr(glucose_module, "fanout_hub", hub)
-    monkeypatch.setattr(glucose_module, "TimescaleSessionLocal", ts_session_factory)
+    monkeypatch.setattr(manual_log_module, "fanout_hub", hub)
+    monkeypatch.setattr(manual_log_module, "TimescaleSessionLocal", ts_session_factory)
 
     ingestion_service = LibreIngestionService(
         db_session_factory=db_session_factory,

@@ -1,6 +1,5 @@
 import base64
 import logging
-import os
 from datetime import date as date_type, datetime, timezone
 from typing import Optional
 from uuid import UUID
@@ -15,7 +14,6 @@ from ..models.user import LifestyleBaseline, User
 from ..schemas.nutrition import (
     AnalyzeImageRequest,
     AnalyzeImageResponse,
-    DailyMealResponse,
     DailyTotalsResponse,
     FoodItemResponse,
     FoodSearchRequest,
@@ -28,12 +26,15 @@ from ..schemas.nutrition import (
     ManualLogRequest,
     NutritionDataResponse,
 )
-from ..services.gemini_service import GeminiVisionService
 from ..services.health.daily_rollup import local_date, local_date_bounds
-from ..services.meal_enrichment_service import MealEnrichmentService, RawFoodItem
-from ..services.nutrition.meals_today import load_todays_meals, meal_label
-from ..services.nutrition.source_router import resolve_nutrition
-from ..services.usda_service import USDAService
+from ..services.meal_enrichment_service import RawFoodItem
+from ..services.nutrition.log_meal_service import log_meal_for_user
+from ..services.nutrition.meals_today import (
+    daily_nutrition_totals,
+    list_meals_for_user,
+    meal_label,
+)
+from ..services.shared_instances import gemini_service, meal_enrichment_service, usda_service
 from .auth import get_current_user
 
 # Sanity cap on GET /meals with no from/to bound — a demo/personal-use app
@@ -46,16 +47,6 @@ MAX_MEALS_LISTED = 500
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
-# ── Service singletons (initialised at import time) ───────────────────────────
-
-gemini_service = GeminiVisionService(
-    api_key=os.getenv("GOOGLE_API_KEY", "")
-)
-usda_service = USDAService(
-    api_key=os.getenv("USDA_API_KEY", "DEMO_KEY")
-)
-meal_enrichment_service = MealEnrichmentService()
 
 
 # ── Helper: time since last bolus (used by inference callers downstream) ──────
@@ -184,97 +175,39 @@ async def log_meal(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    ratio = request.portion_grams / 100.0
-
-    if request.calories_per_100g is not None:
-        # Client already resolved nutrition itself — the pre-existing flow
-        # of POST /search (USDA-only) then picking a result. Honor its
-        # numbers as given rather than re-resolving; source is "usda" since
-        # /search has never queried anything else.
-        source = "usda"
-        verified = True
-        calories_per_100g = request.calories_per_100g
-        protein_per_100g = request.protein_per_100g or 0.0
-        carbs_per_100g = request.carbs_per_100g or 0.0
-        fat_per_100g = request.fat_per_100g or 0.0
-        fiber_per_100g = request.fiber_per_100g or 0.0
-    else:
-        # No client-supplied macros: this is the Gemini-recognition path
-        # (analyze-image gave a food name + portion, nothing else) —
-        # resolve nutrition server-side, IFCT -> USDA -> Gemini estimate.
-        resolved = await resolve_nutrition(db, request.food_name, usda_service, gemini_service)
-        source = resolved.source
-        verified = resolved.verified
-        calories_per_100g = resolved.calories_per_100g
-        protein_per_100g = resolved.protein_per_100g
-        carbs_per_100g = resolved.carbs_per_100g
-        fat_per_100g = resolved.fat_per_100g
-        fiber_per_100g = resolved.fiber_per_100g
-
-    raw = RawFoodItem(
-        name=request.food_name,
-        portion_grams=request.portion_grams,
-        calories=calories_per_100g * ratio,
-        carbs_g=carbs_per_100g * ratio,
-        protein_g=protein_per_100g * ratio,
-        fat_g=fat_per_100g * ratio,
-        fiber_g=fiber_per_100g * ratio,
-        confidence=1.0,
+    result = await log_meal_for_user(
+        db, current_user, request.food_name, request.portion_grams,
+        meal_time=request.meal_time,
+        fdc_id=request.fdc_id,
+        calories_per_100g=request.calories_per_100g,
+        protein_per_100g=request.protein_per_100g,
+        carbs_per_100g=request.carbs_per_100g,
+        fat_per_100g=request.fat_per_100g,
+        fiber_per_100g=request.fiber_per_100g,
     )
-
-    enriched = meal_enrichment_service.enrich([raw], confidence=1.0)
-    meal_time = request.meal_time or datetime.now(timezone.utc)
-    if meal_time.tzinfo is None:
-        meal_time = meal_time.replace(tzinfo=timezone.utc)
-
-    meal_log = MealLog(
-        user_id=current_user.id,
-        meal_time=meal_time,
-        food_items=[
-            {
-                "name": request.food_name,
-                "fdc_id": request.fdc_id,
-                "portion_grams": request.portion_grams,
-                "carbs_g": enriched.total_carbs_g,
-                "gl": enriched.glycaemic_load,
-            }
-        ],
-        recognition_confidence=None,
-        total_calories=enriched.total_calories,
-        total_carbs_g=enriched.total_carbs_g,
-        total_protein_g=enriched.total_protein_g,
-        total_fat_g=enriched.total_fat_g,
-        total_fiber_g=enriched.total_fiber_g,
-        glycaemic_load=enriched.glycaemic_load,
-        nutrition_source=source,
-        nutrition_verified=verified,
-    )
-    db.add(meal_log)
-    await db.commit()
-    await db.refresh(meal_log)
 
     logger.info(
         "Meal logged: user=%s food=%s portion=%dg calories=%.0f source=%s verified=%s",
         current_user.id,
         request.food_name,
         request.portion_grams,
-        enriched.total_calories,
-        source,
-        verified,
+        result.calories,
+        result.source,
+        result.verified,
     )
 
     return SaveMealResponse(
-        meal_id=str(meal_log.id),
+        meal_id=str(result.meal_log.id),
         food_name=request.food_name,
         portion_grams=request.portion_grams,
-        calories=enriched.total_calories,
-        protein_g=enriched.total_protein_g,
-        carbs_g=enriched.total_carbs_g,
-        fat_g=enriched.total_fat_g,
-        fiber_g=enriched.total_fiber_g,
-        glycaemic_load=enriched.glycaemic_load,
-        nutrition_source=source,
-        nutrition_verified=verified,
+        calories=result.calories,
+        protein_g=result.protein_g,
+        carbs_g=result.carbs_g,
+        fat_g=result.fat_g,
+        fiber_g=result.fiber_g,
+        glycaemic_load=result.glycaemic_load,
+        nutrition_source=result.source,
+        nutrition_verified=result.verified,
     )
 
 
@@ -369,15 +302,7 @@ async def list_meals(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(MealLog).where(MealLog.user_id == current_user.id)
-    if from_ is not None:
-        stmt = stmt.where(MealLog.meal_time >= from_)
-    if to is not None:
-        stmt = stmt.where(MealLog.meal_time < to)
-    stmt = stmt.order_by(MealLog.meal_time.desc()).limit(MAX_MEALS_LISTED)
-
-    result = await db.execute(stmt)
-    meals = result.scalars().all()
+    meals = await list_meals_for_user(db, current_user.id, from_, to, MAX_MEALS_LISTED)
     return MealListResponse(meals=[_meal_summary(m) for m in meals])
 
 
@@ -455,23 +380,4 @@ async def get_nutrition_daily(
 ):
     target_date = date or local_date(datetime.now(timezone.utc), current_user.timezone)
     range_start, range_end = local_date_bounds(target_date, current_user.timezone)
-    meals = await load_todays_meals(db, current_user.id, range_start, range_end)
-
-    return DailyTotalsResponse(
-        date=target_date,
-        consumed_kcal=sum(m["total_calories"] or 0 for m in meals),
-        carbs_g=float(sum(m["total_carbs_g"] or 0 for m in meals)),
-        protein_g=float(sum(m["total_protein_g"] or 0 for m in meals)),
-        fat_g=float(sum(m["total_fat_g"] or 0 for m in meals)),
-        fiber_g=float(sum(m["total_fiber_g"] or 0 for m in meals)),
-        meals=[
-            DailyMealResponse(
-                id=m["id"],
-                meal_time=m["meal_time"],
-                label=meal_label(m["food_items"]),
-                calories=m["total_calories"],
-                carbs_g=float(m["total_carbs_g"]) if m["total_carbs_g"] is not None else None,
-            )
-            for m in meals
-        ],
-    )
+    return await daily_nutrition_totals(db, current_user.id, range_start, range_end, target_date)

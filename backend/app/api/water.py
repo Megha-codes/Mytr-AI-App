@@ -7,31 +7,25 @@ one more entry in daily_rollup.py's _AGGREGATION map.
 Two endpoints, both user-JWT: POST to log a quick add, GET for today's
 (or any day's) total against the daily goal. GET /device/water/daily
 (app/api/device_data.py) is the device-JWT twin, same pattern as
-/health/daily + /device/health/daily.
+/health/daily + /device/health/daily. The actual logic lives in
+services/water/log_service.py, shared with the analytics chatbot.
 """
 
 from __future__ import annotations
 
-from datetime import date as date_type, datetime, timezone
+from datetime import date as date_type
 from typing import Optional
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..database import get_db
-from ..models.health_metric import HealthMetric
 from ..models.user import User
 from ..schemas.water import WaterDailyResponse, WaterLogRequest, WaterLogResponse
-from ..services.health.daily_rollup import compute_daily_rollup, local_date
+from ..services.water.log_service import DEFAULT_WATER_GOAL_ML, get_water_summary, log_water_entry
 from .auth import get_current_user
 
 router = APIRouter()
-
-# A round, commonly-cited daily target (~8 glasses) -- same status as
-# dashboard.py's steps_goal/calorie_target: a fixed default, not a
-# per-user setting yet. Shared with the device twin below so the desk and
-# the app never disagree about what "the goal" is.
-DEFAULT_WATER_GOAL_ML = 2000
 
 
 @router.post("/water/log", response_model=WaterLogResponse, status_code=201)
@@ -40,22 +34,7 @@ async def log_water(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    now = datetime.now(timezone.utc)
-    db.add(HealthMetric(
-        user_id=current_user.id,
-        metric="water_ml",
-        value=float(request.amount_ml),
-        unit="ml",
-        started_at=now,
-        ended_at=now,
-        source="MANUAL",
-    ))
-    await db.commit()
-
-    today = local_date(now, current_user.timezone)
-    rollup = await compute_daily_rollup(db, current_user.id, today, current_user.timezone)
-    total = int(rollup.get("water_ml") or request.amount_ml)
-
+    total = await log_water_entry(db, current_user, request.amount_ml)
     return WaterLogResponse(success=True, total_ml_today=total)
 
 
@@ -65,12 +44,4 @@ async def get_water_daily(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    target_date = date or local_date(datetime.now(timezone.utc), current_user.timezone)
-    rollup = await compute_daily_rollup(db, current_user.id, target_date, current_user.timezone)
-    total = rollup.get("water_ml")
-
-    return WaterDailyResponse(
-        date=target_date,
-        total_ml=int(total) if total is not None else None,
-        goal_ml=DEFAULT_WATER_GOAL_ML,
-    )
+    return await get_water_summary(db, current_user, date)
