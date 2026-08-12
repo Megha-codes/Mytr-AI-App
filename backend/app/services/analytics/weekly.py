@@ -270,6 +270,7 @@ async def _build_health_trends(
         sleep_minutes=trend_for("sleep_minutes", "min"),
         hrv=trend_for("hrv", "ms"),
         resting_heart_rate=trend_for("resting_heart_rate", "bpm"),
+        water_ml=trend_for("water_ml", "ml"),
     )
 
 

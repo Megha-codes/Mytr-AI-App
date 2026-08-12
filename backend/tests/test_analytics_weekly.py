@@ -275,6 +275,26 @@ async def test_health_trend_has_nulls_for_days_without_samples(app_and_db):
     assert all(d["value"] is None for d in steps["daily"][:-1])
 
 
+async def test_water_trend_sums_multiple_entries_per_day(app_and_db):
+    """water_ml is logged in quick-add chunks (Phase-1 polish part 3's
+    POST /water/log), not one sample per day like steps -- the weekly
+    trend must sum same-day entries, same as steps does."""
+    client, session_factory, _ts = app_and_db
+    user = await make_user(session_factory, "a@example.com")
+    token = create_access_token(subject=str(user.id), token_version=user.token_version)
+
+    now = datetime.now(timezone.utc)
+    await _health_sample(session_factory, user.id, "water_ml", 250, "ml", now)
+    await _health_sample(session_factory, user.id, "water_ml", 500, "ml", now)
+
+    resp = client.get("/analytics/weekly", headers=_auth(token))
+    water = resp.json()["health_trends"]["water_ml"]
+
+    assert water["has_data"] is True
+    assert water["unit"] == "ml"
+    assert water["daily"][-1]["value"] == 750
+
+
 async def test_nutrition_trend_reflects_daily_totals(app_and_db):
     client, session_factory, _ts = app_and_db
     user = await make_user(session_factory, "a@example.com")

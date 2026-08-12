@@ -23,6 +23,7 @@ from ..services.health.daily_rollup import compute_daily_rollup, local_date, loc
 from ..services.nutrition.meals_today import load_todays_meals, meal_label
 from ..services.realtime.glucose_state import resolve_glucose_state
 from ..timescale_database import TimescaleSessionLocal
+from .water import DEFAULT_WATER_GOAL_ML
 
 router = APIRouter()
 
@@ -235,6 +236,29 @@ async def get_device_health_daily(
         "resting_heart_rate": rollup.get("resting_heart_rate"),
         "sleep_minutes": rollup.get("sleep_minutes"),
         "updated_at": rollup["updated_at"].isoformat() if rollup.get("updated_at") else None,
+    }
+    return etag_json_response(request, payload)
+
+
+@router.get("/device/water/daily")
+async def get_device_water_daily(
+    request: Request,
+    date: Optional[date_type] = None,
+    current: tuple[Device, str] = Depends(get_current_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Device-JWT twin of GET /water/daily (app/api/water.py) -- same
+    rollup, same goal constant, so the desk and the app never disagree."""
+    _device, user_id = current
+    user = await _load_user(db, user_id)
+    target_date = date or local_date(datetime.now(timezone.utc), user.timezone)
+    rollup = await compute_daily_rollup(db, user_id, target_date, user.timezone)
+    total = rollup.get("water_ml")
+
+    payload = {
+        "date": target_date.isoformat(),
+        "total_ml": int(total) if total is not None else None,
+        "goal_ml": DEFAULT_WATER_GOAL_ML,
     }
     return etag_json_response(request, payload)
 

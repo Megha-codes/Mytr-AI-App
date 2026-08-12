@@ -29,6 +29,7 @@ _AGGREGATION = {
     "resting_heart_rate": "avg",
     "hrv": "avg",
     "weight_kg": "last",
+    "water_ml": "sum",
 }
 _DEFAULT_AGGREGATION = "avg"
 

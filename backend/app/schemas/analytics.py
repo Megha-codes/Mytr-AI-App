@@ -72,6 +72,7 @@ class HealthTrends(BaseModel):
     sleep_minutes: HealthMetricTrend
     hrv: HealthMetricTrend
     resting_heart_rate: HealthMetricTrend
+    water_ml: HealthMetricTrend
 
 
 # ── Nutrition trends ─────────────────────────────────────────────────────────
