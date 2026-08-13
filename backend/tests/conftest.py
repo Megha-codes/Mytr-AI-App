@@ -160,6 +160,24 @@ async def build_sqlite_db():
                 created_at TIMESTAMP
             )
         """))
+        # chat_logs (migrations/016_chat_logs.sql) — same JSONB-on-sqlite
+        # problem as meal_logs above (tool_arguments/tool_result), and
+        # write-only via raw SQL (services/chat/log.py) for the same
+        # reason, so it needs the same hand-written mirror rather than
+        # joining the `tables=` list.
+        await conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS chat_logs (
+                id TEXT PRIMARY KEY DEFAULT (gen_random_uuid()),
+                user_id TEXT NOT NULL,
+                conversation_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT,
+                tool_name TEXT,
+                tool_arguments TEXT,
+                tool_result TEXT,
+                created_at TIMESTAMP
+            )
+        """))
 
     session_factory = async_sessionmaker(bind=engine, expire_on_commit=False)
     return engine, session_factory

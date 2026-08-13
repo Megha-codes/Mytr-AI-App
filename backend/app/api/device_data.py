@@ -23,7 +23,7 @@ from ..services.health.daily_rollup import compute_daily_rollup, local_date, loc
 from ..services.nutrition.meals_today import load_todays_meals, meal_label
 from ..services.realtime.glucose_state import resolve_glucose_state
 from ..timescale_database import TimescaleSessionLocal
-from .water import DEFAULT_WATER_GOAL_ML
+from ..services.water.log_service import DEFAULT_WATER_GOAL_ML
 
 router = APIRouter()
 
