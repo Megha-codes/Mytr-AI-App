@@ -77,10 +77,24 @@ class GlucoseScreen extends ConsumerWidget {
         // ── Zone 1: Dark Header ──────────────────────────────────────────
         DarkHeader(
           title: 'Live Glucose',
-          trailing: TagPill(
-            label: _getStatusLabel(cgm.currentStatus),
-            backgroundColor: _getStatusColor(cgm.currentStatus).withValues(alpha: 0.2),
-            textColor: _getStatusColor(cgm.currentStatus),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Entry point into the analytics chatbot (POST /chat) — see
+              // chat_screen.dart. Same convention as activity_screen.dart's
+              // chat icon below.
+              IconButton(
+                icon: const Icon(LucideIcons.messageSquare, color: AppTheme.textOnDark),
+                onPressed: () => context.push('/chat'),
+                tooltip: 'Ask Mytr.AI',
+              ),
+              const SizedBox(width: 4),
+              TagPill(
+                label: _getStatusLabel(cgm.currentStatus),
+                backgroundColor: _getStatusColor(cgm.currentStatus).withValues(alpha: 0.2),
+                textColor: _getStatusColor(cgm.currentStatus),
+              ),
+            ],
           ),
           bottomContent: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

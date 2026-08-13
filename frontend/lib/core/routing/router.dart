@@ -22,6 +22,7 @@ import '../../features/devices/ui/screens/pair_device_screen.dart';
 import '../../features/profile/ui/screens/manage_devices_screen.dart';
 import '../../features/home/models/models.dart';
 import '../../features/analytics/ui/screens/analytics_screen.dart';
+import '../../features/chat/ui/screens/chat_screen.dart';
 
 // Onboarding screens
 import '../../features/onboarding/ui/screens/intro_screen.dart';
@@ -178,6 +179,14 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/analytics',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (_, _) => const AnalyticsScreen(),
+      ),
+      // Same convention as /analytics above — full screen, no bottom nav,
+      // own always-present back button. Reachable from both
+      // glucose_screen.dart and activity_screen.dart.
+      GoRoute(
+        path: '/chat',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (_, _) => const ChatScreen(),
       ),
       GoRoute(
         path: '/cgm/libre-connect',
