@@ -75,12 +75,24 @@ class ActivityScreen extends ConsumerWidget {
           eyebrow: 'ACTIVITY',
           eyebrowColor: AppTheme.brandGreen,
           title: 'Move & track',
-          trailing: showBackButton
-              ? IconButton(
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Entry point into the analytics chatbot (POST /chat) — see
+              // chat_screen.dart. Same convention as glucose_screen.dart's
+              // chat icon.
+              IconButton(
+                icon: const Icon(LucideIcons.messageSquare, color: AppTheme.textOnDark),
+                onPressed: () => context.push('/chat'),
+                tooltip: 'Ask Mytr.AI',
+              ),
+              if (showBackButton)
+                IconButton(
                   icon: const Icon(LucideIcons.arrowLeft, color: AppTheme.textOnDark),
                   onPressed: () => context.pop(),
-                )
-              : null,
+                ),
+            ],
+          ),
         ),
 
         Padding(
