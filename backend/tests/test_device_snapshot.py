@@ -164,6 +164,14 @@ async def test_snapshot_health_reflects_todays_samples(app_and_db):
             user_id=user.id, metric="steps", value=2500, unit="count",
             started_at=now, ended_at=now, source="APPLE_HEALTH",
         ))
+        session.add(HealthMetric(
+            user_id=user.id, metric="hrv", value=55, unit="ms",
+            started_at=now, ended_at=now, source="APPLE_HEALTH",
+        ))
+        session.add(HealthMetric(
+            user_id=user.id, metric="sleep_minutes", value=410, unit="min",
+            started_at=now, ended_at=now, source="APPLE_HEALTH",
+        ))
         await session.commit()
 
     with TestClient(app) as client:
@@ -171,6 +179,10 @@ async def test_snapshot_health_reflects_todays_samples(app_and_db):
     body = resp.json()
     assert body["health"]["steps"] == 2500
     assert body["health"]["heart_rate"] is None  # unsynced — absent, not zero
+    # Same fields /device/health/daily and GET /health/daily already surface
+    # — the snapshot's health sub-object must not be a narrower cut of them.
+    assert body["health"]["hrv"] == 55
+    assert body["health"]["sleep_minutes"] == 410
 
 
 # ── Calories section ─────────────────────────────────────────────────────
