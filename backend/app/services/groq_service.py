@@ -28,8 +28,16 @@ logger = logging.getLogger(__name__)
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-# llama-3.3-70b-versatile: Groq's tool-calling-capable general model.
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+# llama-3.3-70b-versatile was retired from Groq's catalog (confirmed via
+# GET /openai/v1/models on 2026-08-18 — the id is gone entirely, and a
+# direct chat-completions call against it returns 404 model_not_found).
+# openai/gpt-oss-120b is Groq's current general-purpose tool-calling model
+# — verified directly against the live API with a real tool schema before
+# switching: it returns a proper OpenAI-shaped tool_calls[] with parseable
+# JSON arguments, same as the retired model did. If this ever needs
+# swapping again, verify the same way rather than guessing a model name:
+# GET /openai/v1/models lists what's actually available to this key.
+DEFAULT_MODEL = "openai/gpt-oss-120b"
 
 
 @dataclass

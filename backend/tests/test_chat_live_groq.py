@@ -4,7 +4,8 @@ part of the offline suite every other test file in this repo belongs to
 credentials"). "Prove the safety deferral actually works" can only be
 proven against the real model — a scripted fake (test_chat_conversation.py)
 only proves our own plumbing passes text through correctly, not that the
-system prompt actually persuades a real llama-3.3-70b-versatile.
+system prompt actually persuades a real model (openai/gpt-oss-120b as of
+2026-08-18 — see groq_service.py's DEFAULT_MODEL for why).
 
 Skips automatically whenever GROQ_API_KEY isn't present in the actual
 process environment — which is the case for a normal `pytest` run, since
