@@ -114,6 +114,27 @@ async def test_health_daily_reflects_todays_samples(app_and_db):
     assert body["active_energy_kcal"] is None
 
 
+async def test_health_daily_includes_hrv(app_and_db):
+    """hrv is a real aggregated metric (daily_rollup.py's _AGGREGATION) that
+    GET /health/daily already surfaces -- the device twin must too, not
+    silently drop a field the app already shows."""
+    app, session_factory = app_and_db
+    user = await make_user(session_factory, "a@example.com")
+    _device_id, token = await _device_token(session_factory, user)
+
+    now = datetime.now(timezone.utc)
+    async with session_factory() as session:
+        session.add(HealthMetric(
+            user_id=user.id, metric="hrv", value=42, unit="ms",
+            started_at=now, ended_at=now, source="APPLE_HEALTH",
+        ))
+        await session.commit()
+
+    with TestClient(app) as client:
+        resp = client.get("/device/health/daily", headers=_auth(token))
+    assert resp.json()["hrv"] == 42
+
+
 async def test_health_daily_honors_explicit_date_param(app_and_db):
     app, session_factory = app_and_db
     user = await make_user(session_factory, "a@example.com")

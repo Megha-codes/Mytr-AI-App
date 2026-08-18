@@ -19,6 +19,7 @@ from ..models.device import Device
 from ..models.glucose_reading import GlucoseReadingModel
 from ..models.user import CGMDevice, InsulinProfile, User
 from ..schemas.device import DeviceHeartbeatRequest
+from ..services.analytics.weekly import DEFAULT_WINDOW_DAYS, build_weekly_analytics
 from ..services.health.daily_rollup import compute_daily_rollup, local_date, local_date_bounds
 from ..services.nutrition.meals_today import load_todays_meals, meal_label
 from ..services.realtime.glucose_state import resolve_glucose_state
@@ -123,6 +124,9 @@ async def get_device_snapshot(
             "steps": rollup.get("steps"),
             "active_energy_kcal": rollup.get("active_energy_kcal"),
             "heart_rate": rollup.get("heart_rate"),
+            "resting_heart_rate": rollup.get("resting_heart_rate"),
+            "sleep_minutes": rollup.get("sleep_minutes"),
+            "hrv": rollup.get("hrv"),
             "updated_at": rollup["updated_at"].isoformat() if rollup.get("updated_at") else None,
         },
         "calories": {
@@ -235,6 +239,7 @@ async def get_device_health_daily(
         "heart_rate": rollup.get("heart_rate"),
         "resting_heart_rate": rollup.get("resting_heart_rate"),
         "sleep_minutes": rollup.get("sleep_minutes"),
+        "hrv": rollup.get("hrv"),
         "updated_at": rollup["updated_at"].isoformat() if rollup.get("updated_at") else None,
     }
     return etag_json_response(request, payload)
@@ -295,6 +300,24 @@ async def get_device_calories_daily(
         ],
     }
     return etag_json_response(request, payload)
+
+
+@router.get("/device/analytics/weekly")
+async def get_device_analytics_weekly(
+    request: Request,
+    days: int = Query(DEFAULT_WINDOW_DAYS, ge=2, le=30),
+    current: tuple[Device, str] = Depends(get_current_device),
+    db: AsyncSession = Depends(get_db),
+):
+    """Device-JWT twin of GET /analytics/weekly (api/analytics.py) -- same
+    builder, same response shape, so the desk's analytics page and the
+    app's never disagree. ETag'd like every other device GET here (the
+    user-facing route isn't, since the app screen doesn't need conditional
+    GETs the way a Pi Zero 2 W's link does)."""
+    _device, user_id = current
+    user = await _load_user(db, user_id)
+    result = await build_weekly_analytics(db, user_id, user.timezone, window_days=days)
+    return etag_json_response(request, result.model_dump(mode="json"))
 
 
 @router.post("/device/heartbeat")
