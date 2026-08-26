@@ -44,6 +44,11 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   hive_generator: ^2.0.1
   build_runner: ^2.4.9
+  # Test-only: lets tests install a FakeSecureStoragePlatform (see
+  # test/support/) instead of hitting the real platform channel, which has
+  # no implementation under `flutter test` and would otherwise make every
+  # FlutterSecureStorage read/write/delete a silent no-op.
+  flutter_secure_storage_platform_interface: ^1.1.2
 
 flutter:
   uses-material-design: true

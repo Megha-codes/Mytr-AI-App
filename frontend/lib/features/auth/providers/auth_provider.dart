@@ -111,6 +111,25 @@ class AuthNotifier extends AutoDisposeAsyncNotifier<AuthState> {
   /// chatbot answers with their real health data); inferenceProvider held
   /// a computed insulin dose recommendation for their physiology — these
   /// two are the ones where "stale" isn't just wrong, it's dangerous.
+  ///
+  /// RULE FOR ANY NEW USER-SCOPED PROVIDER (fetched-from-backend state,
+  /// anything typed in, anything computed from either): it needs BOTH of
+  /// the following, not just one —
+  ///   1. `.autoDispose` on the provider declaration, so it doesn't outlive
+  ///      whatever screen actually needed it, AND
+  ///   2. an explicit `ref.invalidate(...)` line added right here.
+  /// `.autoDispose` alone isn't sufficient — it only tears the provider
+  /// down once its LAST watcher unmounts, which depends on the router
+  /// actually unmounting every screen that was watching it, and is exactly
+  /// the kind of "probably fine" widget-tree timing this method exists to
+  /// not depend on. An explicit invalidate() alone isn't sufficient either
+  /// if the provider persists to its own storage (see goalsProvider.clear()
+  /// above) — invalidating without wiping storage just rebuilds the same
+  /// leaked value straight back out of disk. Skipping either one silently
+  /// reopens this exact bug for that provider. See
+  /// test/features/auth/logout_cross_user_test.dart, which exists
+  /// specifically to catch that regression — extend it (don't just add a
+  /// new standalone test) when you add a provider here.
   Future<void> _clearAllUserState() async {
     await ref.read(goalsProvider.notifier).clear();
     await _storage.clearAll();
