@@ -39,11 +39,24 @@ class StatTile extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                label.toUpperCase(),
-                style: AppTheme.labelSmall.copyWith(color: textColor.withValues(alpha: 0.6)),
+              // Expanded + ellipsis: labels are short today ("STEPS",
+              // "ACTIVE MINUTES"), but this tile is used 3-across on narrow
+              // phones (activity_screen.dart) — an unwrapped Text next to
+              // the optional trailing icon is exactly the shape of a
+              // RenderFlex horizontal overflow if a longer label ever lands
+              // here.
+              Expanded(
+                child: Text(
+                  label.toUpperCase(),
+                  style: AppTheme.labelSmall.copyWith(color: textColor.withValues(alpha: 0.6)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              if (icon != null) Icon(icon, size: 16, color: textColor.withValues(alpha: 0.6)),
+              if (icon != null) ...[
+                const SizedBox(width: 4),
+                Icon(icon, size: 16, color: textColor.withValues(alpha: 0.6)),
+              ],
             ],
           ),
           const SizedBox(height: 12),
@@ -51,9 +64,13 @@ class StatTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                value,
-                style: AppTheme.displayMedium.copyWith(color: textColor),
+              Flexible(
+                child: Text(
+                  value,
+                  style: AppTheme.displayMedium.copyWith(color: textColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               if (unit != null) ...[
                 const SizedBox(width: 4),
@@ -65,11 +82,8 @@ class StatTile extends StatelessWidget {
             ],
           ),
           if (subtext != null) ...[
-            const SizedBox(height: 4),
-            Text(
-              subtext!,
-              style: AppTheme.bodySmall.copyWith(color: textColor.withValues(alpha: 0.6)),
-            ),
+            const SizedBox(height: 8),
+            MetricHintBox(text: subtext!, color: textColor),
           ],
         ],
       ),
@@ -80,6 +94,56 @@ class StatTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppTheme.cardRadius),
       child: card,
+    );
+  }
+}
+
+/// A subtle, contained box for helper/instruction copy shown under a metric
+/// (e.g. "Grant Health permission to see your steps.") — used by
+/// [StatTile]'s `subtext` and directly by metric widgets that don't go
+/// through StatTile (e.g. StepsStrip in activity_widgets.dart), so this
+/// styling only lives in one place.
+///
+/// This used to just be a bare bodySmall (14px) Text with no cap — on a
+/// metric tile narrow enough to sit 3-across (activity_screen.dart) a long
+/// message could wrap to half a dozen lines and visually dominate the
+/// metric it was meant to annotate. Smaller, capped at 2 lines with an
+/// ellipsis, and boxed so it reads as a secondary hint, not competing body
+/// text — every call site here pairs with a tap target that shows the full
+/// explanation (showConnectDataGuide), so truncation never actually loses
+/// the message, just defers it.
+class MetricHintBox extends StatelessWidget {
+  final String text;
+  final Color color;
+  final int maxLines;
+
+  const MetricHintBox({
+    super.key,
+    required this.text,
+    required this.color,
+    this.maxLines = 2,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        text,
+        style: AppTheme.bodySmall.copyWith(
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+          height: 1.25,
+          color: color.withValues(alpha: 0.7),
+        ),
+        maxLines: maxLines,
+        overflow: TextOverflow.ellipsis,
+      ),
     );
   }
 }

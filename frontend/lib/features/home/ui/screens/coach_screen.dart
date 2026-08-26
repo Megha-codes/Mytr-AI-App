@@ -94,7 +94,7 @@ class CoachScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(user.levelTitle, style: AppTheme.titleLarge),
+                    Text(user.levelTitle, style: AppTheme.titleLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 4),
                     Text('${user.currentXP} / ${user.xpToNextLevel} XP', style: AppTheme.labelSmall),
                     const SizedBox(height: 12),

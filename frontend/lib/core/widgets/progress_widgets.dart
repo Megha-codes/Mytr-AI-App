@@ -90,9 +90,19 @@ class LevelBadge extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'Lvl $level · $title',
-            style: AppTheme.labelLarge.copyWith(color: Colors.white, fontSize: 12),
+          // This badge is DarkHeader's `trailing` — the sibling `Expanded`
+          // title column already protects the header Row as a whole, but
+          // without Flexible here a long `title` (a gamification level
+          // name, not a fixed string) could still force this badge wider
+          // than the space actually left for it once that title also needs
+          // room.
+          Flexible(
+            child: Text(
+              'Lvl $level · $title',
+              style: AppTheme.labelLarge.copyWith(color: Colors.white, fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

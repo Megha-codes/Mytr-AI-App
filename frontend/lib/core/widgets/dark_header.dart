@@ -48,11 +48,20 @@ class DarkHeader extends StatelessWidget {
                           style: AppTheme.labelSmall.copyWith(
                             color: eyebrowColor ?? AppTheme.textOnDarkMuted,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                    // title is often user-generated (e.g. home_screen.dart
+                    // passes the signed-in user's own display name) — capped
+                    // to keep this header's height predictable regardless of
+                    // trailing's own layout (a LevelBadge/icon row that
+                    // doesn't grow with a wrapped multi-line title).
                     Text(
                       title,
                       style: AppTheme.titleMedium.copyWith(color: AppTheme.textOnDark),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     if (subtitle != null)
                       Padding(
@@ -60,6 +69,8 @@ class DarkHeader extends StatelessWidget {
                         child: Text(
                           subtitle ?? '',
                           style: AppTheme.bodySmall.copyWith(color: AppTheme.textOnDarkMuted),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                   ],

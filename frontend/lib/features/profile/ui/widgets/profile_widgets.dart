@@ -49,9 +49,19 @@ class ProfileRow extends StatelessWidget {
               child: Text(
                 title,
                 style: AppTheme.bodyLarge.copyWith(color: titleColor ?? AppTheme.textPrimary),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
-            trailingWidget ?? const SizedBox.shrink(),
+            // trailing is often account/device data of unpredictable length
+            // (a wearable's own name, a user-typed goal, ...) — Flexible so
+            // ANY caller's trailing widget is guaranteed to fit the row
+            // instead of only being safe when whoever writes the call site
+            // happens to remember to bound it themselves.
+            if (trailingWidget != null)
+              Flexible(child: trailingWidget)
+            else
+              const SizedBox.shrink(),
             const SizedBox(width: 8),
             Icon(LucideIcons.chevronRight, size: 16, color: AppTheme.borderDark),
           ],

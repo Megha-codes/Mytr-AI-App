@@ -22,7 +22,12 @@ class HomeScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundWhite,
-      floatingActionButton: kDebugMode 
+      // startFloat (bottom-LEFT): MainShell now puts a shared chat FAB at
+      // the conventional bottom-right on every screen it wraps (including
+      // this one) — kept here at the opposite corner so the two never
+      // overlap.
+      floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+      floatingActionButton: kDebugMode
         ? FloatingActionButton.small(
             heroTag: 'home_debug_fab',
             onPressed: () => _showDebugConsole(context),

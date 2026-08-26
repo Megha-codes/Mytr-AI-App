@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../../../core/theme/app_theme.dart';
+import '../../../../core/widgets/stat_widgets.dart';
 import '../../models/models.dart';
 
 class CircularProgressRing extends StatelessWidget {
@@ -164,9 +165,10 @@ class StepsStrip extends StatelessWidget {
                   Text('of $goal goal', style: AppTheme.bodySmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6))),
                 ] else ...[
                   Text('No data', style: AppTheme.displayMedium.copyWith(color: AppTheme.textPrimary)),
-                  Text(
-                    'Grant Health permission to see steps.',
-                    style: AppTheme.bodySmall.copyWith(color: AppTheme.brandGreenDark.withValues(alpha: 0.6)),
+                  const SizedBox(height: 4),
+                  const MetricHintBox(
+                    text: 'Grant Health permission to see steps.',
+                    color: AppTheme.brandGreenDark,
                   ),
                 ],
               ],

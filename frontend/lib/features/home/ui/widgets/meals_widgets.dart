@@ -106,7 +106,17 @@ class DetectionBanner extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text(meal.name, style: AppTheme.titleMedium.copyWith(color: Colors.white, fontSize: 24))),
+              // meal.name comes from AI recognition (Gemini Vision) or a food
+              // search result — no length guarantee, unlike this banner's
+              // other, short/fixed labels.
+              Expanded(
+                child: Text(
+                  meal.name,
+                  style: AppTheme.titleMedium.copyWith(color: Colors.white, fontSize: 24),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), borderRadius: BorderRadius.circular(8)),
@@ -416,7 +426,7 @@ class _MealRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(meal.name, style: AppTheme.titleMedium),
+                  Text(meal.name, style: AppTheme.titleMedium, maxLines: 1, overflow: TextOverflow.ellipsis),
                   Text('${meal.timestamp.hour}:${meal.timestamp.minute.toString().padLeft(2, '0')}', style: AppTheme.bodySmall),
                 ],
               ),

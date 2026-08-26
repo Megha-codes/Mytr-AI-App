@@ -333,9 +333,16 @@ class _SyncPill extends StatelessWidget {
         children: [
           const Icon(LucideIcons.refreshCw, size: 14, color: AppTheme.textSecondary),
           const SizedBox(width: 8),
-          Text(
-            'Synced from ${device.name}',
-            style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+          // device.name is user/OEM-controlled (a wearable's Bluetooth/
+          // account name) — Flexible so a long one shrinks to fit this
+          // pill's own width instead of pushing the row past screen edge.
+          Flexible(
+            child: Text(
+              'Synced from ${device.name}',
+              style: AppTheme.bodySmall.copyWith(color: AppTheme.textSecondary),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ],
       ),

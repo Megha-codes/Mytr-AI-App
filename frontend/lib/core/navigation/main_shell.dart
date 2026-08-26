@@ -35,16 +35,49 @@ class MainShell extends ConsumerWidget {
                     children: [
                       const Icon(LucideIcons.wifiOff, color: Colors.white, size: 14),
                       const SizedBox(width: 8),
-                      Text(
-                        'Showing last synced data while offline',
-                        style: AppTheme.labelSmall.copyWith(color: Colors.white, letterSpacing: 0),
+                      Flexible(
+                        child: Text(
+                          'Showing last synced data while offline',
+                          style: AppTheme.labelSmall.copyWith(color: Colors.white, letterSpacing: 0),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
             ),
-          Expanded(child: child),
+          Expanded(
+            child: Stack(
+              children: [
+                child,
+                // Prominent chatbot entry point (POST /chat, chat_screen.dart)
+                // — one shared FAB here (not per-screen) so it's guaranteed
+                // identical position/style on every screen MainShell wraps
+                // (home/glucose, activity, coach, profile), rather than each
+                // screen having to remember to add its own.
+                //
+                // Bottom-right, above the bottom nav bar (this Stack is
+                // `body`, which Scaffold already lays out above
+                // bottomNavigationBar) — the conventional spot for a
+                // persistent chat entry point. Deliberately NOT top-right:
+                // that's where DarkHeader's own trailing row already puts a
+                // per-screen chat icon on activity/glucose_screen.dart, and
+                // stacking two chat affordances in the same corner would
+                // look like a bug, not an upgrade. Clear of the
+                // centerDocked camera FAB below (that one's horizontally
+                // centered); HomeScreen's own debug-only FAB is moved to
+                // startFloat (bottom-left) specifically to stay clear of
+                // this one too.
+                const Positioned(
+                  right: 16,
+                  bottom: 16,
+                  child: _ChatFab(),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: Container(
@@ -108,6 +141,26 @@ class MainShell extends ConsumerWidget {
           child: const Icon(LucideIcons.camera, color: Colors.white),
         ),
       ),
+    );
+  }
+}
+
+/// Shared floating entry point into the analytics chatbot (POST /chat,
+/// chat_screen.dart) — see MainShell.build for why this lives here once
+/// instead of on each screen individually.
+class _ChatFab extends StatelessWidget {
+  const _ChatFab();
+
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton(
+      heroTag: 'main_chat_fab',
+      elevation: 2,
+      backgroundColor: AppTheme.brandPurpleDeep,
+      shape: const CircleBorder(),
+      onPressed: () => context.push('/chat'),
+      tooltip: 'Ask Mytr.AI',
+      child: const Icon(LucideIcons.messageSquare, color: Colors.white),
     );
   }
 }

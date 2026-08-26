@@ -119,6 +119,8 @@ class ProfileScreen extends ConsumerWidget {
                 Text(
                   user.displayName,
                   style: AppTheme.displayMedium.copyWith(color: Colors.white),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
                 Row(
@@ -207,7 +209,14 @@ class ProfileScreen extends ConsumerWidget {
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(deviceState.connectedCGM?.name ?? 'Not connected', style: AppTheme.labelSmall),
+                  Flexible(
+                    child: Text(
+                      deviceState.connectedCGM?.name ?? 'Not connected',
+                      style: AppTheme.labelSmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
                   if (deviceState.connectedCGM != null) ...[
                     const SizedBox(width: 4),
                     const Icon(Icons.circle, size: 8, color: AppTheme.brandGreen),
@@ -219,13 +228,15 @@ class ProfileScreen extends ConsumerWidget {
           ] else ...[
             ProfileRow(
               title: 'Personal stats',
-              trailing: Text(_formatStats(user), style: AppTheme.labelSmall),
+              trailing: Text(_formatStats(user), style: AppTheme.labelSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
               onTap: () => context.push('/profile/stats-edit'),
             ),
             const Divider(height: 1),
             ProfileRow(
+              // primaryGoal is free text the user chose during onboarding —
+              // no length guarantee at all, unlike the rest of this screen.
               title: 'Goals',
-              trailing: Text(user.primaryGoal, style: AppTheme.labelSmall),
+              trailing: Text(user.primaryGoal, style: AppTheme.labelSmall, maxLines: 1, overflow: TextOverflow.ellipsis),
               onTap: () => context.push('/profile/goals'),
             ),
             const Divider(height: 1),
@@ -234,6 +245,8 @@ class ProfileScreen extends ConsumerWidget {
               trailing: Text(
                 deviceState.connectedWearables.isNotEmpty ? deviceState.connectedWearables.first.name : 'None connected',
                 style: AppTheme.labelSmall,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
               onTap: () => context.push('/profile/devices'),
             ),
