@@ -2,6 +2,12 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/auth_storage_service.dart';
 import '../../../core/api/api_client.dart';
+import '../../chat/providers/chat_provider.dart';
+import '../../devices/providers/device_list_provider.dart';
+import '../../cgm/providers/cgm_connection_provider.dart';
+import '../../home/providers/subproviders/inference_provider.dart';
+import '../../profile/providers/goals_provider.dart';
+import '../../wearables/providers/wearable_provider.dart';
 
 enum AuthStatus { initial, unauthenticated, authenticated, onboardingRequired }
 
@@ -78,8 +84,45 @@ class AuthNotifier extends AutoDisposeAsyncNotifier<AuthState> {
     }
   }
   
-  Future<void> logout() async {
+  /// Wipes every piece of THIS user's state that could otherwise survive
+  /// into the next signed-in user's session on the same device — logout
+  /// never restarts the app process, so anything not explicitly cleared
+  /// here just... stays, in memory or on disk, for whoever logs in next.
+  ///
+  /// _storage.clearAll() (AuthStorageService) only ever owned the token
+  /// pair + a couple of onboarding flags. Everything below is a SEPARATE
+  /// cache that clearAll() was never wired to reach:
+  ///   - goalsProvider persists to its own private secure-storage key
+  ///     ('user_goals', in goals_provider.dart) entirely outside
+  ///     AuthStorageService — clear() wipes that key AND the in-memory
+  ///     state (a bare invalidate would just re-read the still-populated
+  ///     key and hand the next user the same "leaked" goals right back).
+  ///   - The rest are plain in-memory Riverpod state with no local
+  ///     persistence, but most feature providers in this app are
+  ///     `.autoDispose` and get torn down for free once the router
+  ///     unmounts the authenticated screens on logout. These six are the
+  ///     ones that were NOT (chat/inference/deviceList weren't autoDispose
+  ///     at all; wearable/cgmConnection still aren't, by design — they can
+  ///     legitimately need to survive navigation mid-flow) — ref.invalidate
+  ///     forces every one of them back to a fresh build() regardless of
+  ///     whether anything happens to still be watching them, so this
+  ///     doesn't depend on incidental widget-tree timing being right.
+  /// chatProvider held the previous user's actual conversation (the
+  /// chatbot answers with their real health data); inferenceProvider held
+  /// a computed insulin dose recommendation for their physiology — these
+  /// two are the ones where "stale" isn't just wrong, it's dangerous.
+  Future<void> _clearAllUserState() async {
+    await ref.read(goalsProvider.notifier).clear();
     await _storage.clearAll();
+    ref.invalidate(chatProvider);
+    ref.invalidate(inferenceProvider);
+    ref.invalidate(deviceListProvider);
+    ref.invalidate(wearableProvider);
+    ref.invalidate(cgmConnectionProvider);
+  }
+
+  Future<void> logout() async {
+    await _clearAllUserState();
     state = AsyncData(AuthState(status: AuthStatus.unauthenticated));
   }
 
@@ -148,7 +191,7 @@ class AuthNotifier extends AutoDisposeAsyncNotifier<AuthState> {
   Future<void> deleteAccount(String password) async {
     final apiClient = ref.read(apiClientProvider);
     await apiClient.delete('/account', data: {'password': password});
-    await _storage.clearAll();
+    await _clearAllUserState();
     state = AsyncData(AuthState(status: AuthStatus.unauthenticated));
   }
 
@@ -160,7 +203,7 @@ class AuthNotifier extends AutoDisposeAsyncNotifier<AuthState> {
     } catch (_) {
       // Even if the call fails (e.g. token already expired), clear locally.
     }
-    await _storage.clearAll();
+    await _clearAllUserState();
     state = AsyncData(AuthState(status: AuthStatus.unauthenticated));
   }
 }

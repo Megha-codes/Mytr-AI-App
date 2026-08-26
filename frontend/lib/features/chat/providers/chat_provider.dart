@@ -46,7 +46,7 @@ class ChatState {
   }
 }
 
-class ChatNotifier extends Notifier<ChatState> {
+class ChatNotifier extends AutoDisposeNotifier<ChatState> {
   @override
   ChatState build() => const ChatState();
 
@@ -129,4 +129,12 @@ class ChatNotifier extends Notifier<ChatState> {
   }
 }
 
-final chatProvider = NotifierProvider<ChatNotifier, ChatState>(ChatNotifier.new);
+// autoDispose: this is in-memory-only conversation state (no local
+// persistence, no server-side session — see the class docs above), but
+// nothing else made it reset on logout. Chat replies quote the signed-in
+// user's real health data ("every real number in a reply comes from a tool
+// call"), so a stale ChatNotifier surviving into the next signed-in user's
+// session on the same device would hand them the previous user's entire
+// conversation, verbatim.
+final chatProvider =
+    NotifierProvider.autoDispose<ChatNotifier, ChatState>(ChatNotifier.new);

@@ -44,7 +44,7 @@ class Goals {
       );
 }
 
-class GoalsNotifier extends AsyncNotifier<Goals> {
+class GoalsNotifier extends AutoDisposeAsyncNotifier<Goals> {
   static const _key = 'user_goals';
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage(
@@ -73,7 +73,21 @@ class GoalsNotifier extends AsyncNotifier<Goals> {
       // Persisting failed; in-memory state still updated for this session.
     }
   }
+
+  /// Wipes this user's goals from disk AND resets in-memory state, so the
+  /// next signed-in user (same phone, same process — logout doesn't restart
+  /// the app) never inherits them. This storage is a private
+  /// FlutterSecureStorage instance under its own key ('user_goals'),
+  /// entirely separate from AuthStorageService — clearAll() on that service
+  /// never reaches it, which is exactly how this leaked across users before.
+  /// Called from AuthNotifier.logout()/logoutAllDevices()/deleteAccount().
+  Future<void> clear() async {
+    state = const AsyncData(Goals());
+    try {
+      await _storage.delete(key: _key);
+    } catch (_) {}
+  }
 }
 
 final goalsProvider =
-    AsyncNotifierProvider<GoalsNotifier, Goals>(GoalsNotifier.new);
+    AsyncNotifierProvider.autoDispose<GoalsNotifier, Goals>(GoalsNotifier.new);

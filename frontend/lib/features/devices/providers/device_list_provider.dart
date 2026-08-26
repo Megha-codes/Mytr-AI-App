@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/api/api_client.dart';
 import '../models/paired_device.dart';
 
-class DeviceListNotifier extends AsyncNotifier<List<PairedDevice>> {
+class DeviceListNotifier extends AutoDisposeAsyncNotifier<List<PairedDevice>> {
   @override
   Future<List<PairedDevice>> build() => _fetch();
 
@@ -42,6 +42,6 @@ class DeviceListNotifier extends AsyncNotifier<List<PairedDevice>> {
 }
 
 final deviceListProvider =
-    AsyncNotifierProvider<DeviceListNotifier, List<PairedDevice>>(() {
+    AsyncNotifierProvider.autoDispose<DeviceListNotifier, List<PairedDevice>>(() {
   return DeviceListNotifier();
 });

@@ -46,7 +46,7 @@ class InferenceState {
   }
 }
 
-class InferenceNotifier extends Notifier<InferenceState> {
+class InferenceNotifier extends AutoDisposeNotifier<InferenceState> {
   @override
   InferenceState build() {
     return InferenceState();
@@ -87,6 +87,13 @@ class InferenceNotifier extends Notifier<InferenceState> {
   }
 }
 
-final inferenceProvider = NotifierProvider<InferenceNotifier, InferenceState>(() {
+// autoDispose: recommendedDose/baseBolus are a computed insulin dose
+// recommendation for the signed-in user's own physiology and meal — this is
+// dosing guidance, not just a display preference. Leaving a stale one alive
+// into the next signed-in user's session (same device, no app restart on
+// logout) isn't just a privacy leak, it's User B looking at a dose number
+// computed for User A.
+final inferenceProvider =
+    NotifierProvider.autoDispose<InferenceNotifier, InferenceState>(() {
   return InferenceNotifier();
 });
