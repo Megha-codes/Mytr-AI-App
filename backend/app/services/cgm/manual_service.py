@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from uuid import UUID as PUUID
 from sqlalchemy import select, and_, desc
-from .factory import BaseCGMService, CGMReading
+from .base import BaseCGMService, CGMReading
 
 
 class ManualGlucoseService(BaseCGMService):

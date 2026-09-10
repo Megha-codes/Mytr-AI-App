@@ -1,6 +1,6 @@
 import httpx
 from datetime import datetime, timedelta
-from .factory import BaseCGMService, CGMReading
+from .base import BaseCGMService, CGMReading
 
 ACCUCHEK_API_URL = "https://s3.accucheck.com/mchc/api"
 

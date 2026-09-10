@@ -2,7 +2,7 @@ import httpx
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
-from .factory import BaseCGMService, CGMReading
+from .base import BaseCGMService, CGMReading
 from ...core.config import settings
 # Shared, tz-resolving parser that turns LibreLinkUp's US-style, timezone-less
 # timestamps into UTC (see libre_timestamp.libre_timestamp_to_epoch). That

@@ -1,32 +1,13 @@
-from datetime import datetime
-from dataclasses import dataclass
+from .base import BaseCGMService, CGMReading
 
-
-@dataclass
-class CGMReading:
-    value: int
-    timestamp: datetime
-    trend: str
-    trend_arrow: str = "→"
-    device_type: str = "UNKNOWN"
-    is_continuous: bool = True
-
-
-class BaseCGMService:
-    is_continuous: bool = False
-    supports_trend: bool = False
-
-    async def get_latest_reading(self, user_id: str) -> CGMReading | None:
-        raise NotImplementedError()
-
-    async def get_reading_at_time(
-        self, user_id: str, target_time: datetime, tolerance_minutes: int = 10
-    ) -> CGMReading | None:
-        raise NotImplementedError()
-
-
+# Safe now: base.py (BaseCGMService/CGMReading) has no dependency on any of
+# the concrete service modules below, so importing them here can't loop back
+# into a module that's still mid-initialization — see base.py's docstring
+# for the shape of the bug this used to be.
 from .libre_service import LibreCGMService
 from .manual_service import ManualGlucoseService
+
+__all__ = ["BaseCGMService", "CGMReading", "cgm_service_factory"]
 
 
 def cgm_service_factory(device_type: str) -> BaseCGMService:
