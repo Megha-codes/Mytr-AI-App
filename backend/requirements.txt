@@ -15,6 +15,15 @@ starlette==1.0.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.46.0
+# Bare uvicorn has no ASGI WebSocket implementation at all — it needs one of
+# websockets/wsproto to actually speak the protocol. main.py registers real
+# websocket routes (/ws/app/stream, /ws/device/stream, status_websocket) that
+# depend on this; without it uvicorn logs "No supported WebSocket library
+# detected" and every WS handshake fails, even though the HTTP routes work
+# fine. Pinning it explicitly rather than switching to uvicorn[standard]
+# (which also pulls in httptools/uvloop/watchfiles — more than this app uses,
+# and uvloop/watchfiles aren't available on Windows dev machines anyway).
+websockets>=12.0
 bcrypt>=4.0.0
 python-jose[cryptography]>=3.3.0
 # IANA timezone database for zoneinfo. Required for LibreLinkUp timestamp->UTC

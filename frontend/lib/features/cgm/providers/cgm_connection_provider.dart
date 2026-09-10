@@ -4,19 +4,29 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../../core/config.dart';
-import '../../../core/network/dio_provider.dart';
+import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_session_provider.dart';
 import '../models/cgm_device_type.dart';
 import '../models/cgm_connection_state.dart';
 import '../models/cgm_connected_info.dart';
 
 class CgmConnectionNotifier extends Notifier<CgmConnectionState> {
-  late Dio _dio;
+  late ApiClient _api;
   WebSocketChannel? _wsChannel;
 
   @override
   CgmConnectionState build() {
-    _dio = ref.watch(dioProvider);
+    // Was ref.watch(dioProvider) — a bare Dio with no auth interceptor at
+    // all (see core/network/dio_provider.dart), so every call below sent no
+    // Authorization header whatsoever. It went unnoticed because these
+    // calls also still passed a stale `user_id` query param/body field left
+    // over from an earlier, pre-auth version of these routes — cgm_connect.py
+    // now takes the user from Depends(get_current_user) exclusively, so
+    // every call here was 401ing for the real reason (no token) while
+    // looking, from the call site, like it should have been identifying the
+    // user correctly. apiClientProvider is the client that actually attaches
+    // the bearer token (and retries once on a 401 after a token refresh).
+    _api = ref.watch(apiClientProvider);
     _initWebSocket();
     return const CgmConnectionState();
   }
@@ -46,10 +56,12 @@ class CgmConnectionNotifier extends Notifier<CgmConnectionState> {
     state = const CgmConnectionState(status: CgmConnectionStatus.validating);
 
     try {
-      final userId = ref.read(authSessionProvider);
-      final response = await _dio.post(
+      // user_id used to be sent as a query param here — the route now
+      // identifies the caller purely from the bearer token (see the
+      // comment on _api above), so it's dropped rather than kept as dead
+      // weight that misleads readers into thinking the backend uses it.
+      final response = await _api.post(
         '/cgm/connect/libre',
-        queryParameters: {'user_id': userId},
         data: {'email': email, 'password': password},
       );
 
@@ -80,11 +92,7 @@ class CgmConnectionNotifier extends Notifier<CgmConnectionState> {
     state = const CgmConnectionState(status: CgmConnectionStatus.validating);
 
     try {
-      final userId = ref.read(authSessionProvider);
-      final response = await _dio.post(
-        '/cgm/connect/manual',
-        queryParameters: {'user_id': userId},
-      );
+      final response = await _api.post('/cgm/connect/manual');
 
       final info = CgmConnectedInfo.fromJson(response.data as Map<String, dynamic>);
       state = CgmConnectionState(
@@ -99,8 +107,25 @@ class CgmConnectionNotifier extends Notifier<CgmConnectionState> {
 
   Future<void> disconnect() async {
     try {
-      final userId = ref.read(authSessionProvider);
-      await _dio.delete('/cgm/devices', queryParameters: {'user_id': userId});
+      // The route is DELETE /cgm/devices/{device_id} — there's no bare
+      // "disconnect whatever is connected" endpoint, and this notifier
+      // doesn't carry a device id in its state (CgmConnectedInfo never
+      // gained one). Fetching the list first and deleting the active entry
+      // is the only way to disconnect with what the backend actually
+      // exposes, and matches there being exactly one CGM per user in
+      // practice today (this fixes the previous call, which also used to
+      // hit a route — DELETE /cgm/devices with a bare user_id query param
+      // — that never matched the real path shape at all, on top of the
+      // missing-auth bug every other call in this file had).
+      final devices = (await _api.get('/cgm/devices')).data as List<dynamic>;
+      final active = devices.cast<Map<String, dynamic>>().firstWhere(
+            (d) => d['is_active'] == true,
+            orElse: () => devices.isNotEmpty ? devices.first as Map<String, dynamic> : {},
+          );
+      final deviceId = active['id'] as String?;
+      if (deviceId != null) {
+        await _api.delete('/cgm/devices/$deviceId');
+      }
       state = const CgmConnectionState();
     } catch (_) {
       // Still reset locally even if backend fails
