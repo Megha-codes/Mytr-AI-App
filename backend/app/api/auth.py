@@ -147,7 +147,7 @@ class ResetPasswordRequest(BaseModel):
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @router.post("/refresh", response_model=LoginResponse)
-async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_db)):
+async def refresh_token(request: RefreshRequest, http_request: Request, db: AsyncSession = Depends(get_db)):
     payload = decode_token_payload(request.refresh_token, expected_type=TOKEN_TYPE_REFRESH)
     if payload is None:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
@@ -163,6 +163,23 @@ async def refresh_token(request: RefreshRequest, db: AsyncSession = Depends(get_
     access_token = create_access_token(str(user.id), token_version=tv)
     new_refresh_token = create_refresh_token(str(user.id), token_version=tv)
     user_type = user.diabetes_type.lower() if user.diabetes_type else "fitness"
+
+    # A real production bug this fixes: libre_account_registry.py's
+    # get_eligible_accounts uses "a successful LoginAttempt in the last 7
+    # days" as its proxy for "this user is actively using the app," to
+    # bound the shared Libre poller to accounts someone might actually be
+    # looking at. But a mobile app normally stays "logged in" indefinitely
+    # via exactly this silent refresh flow, never re-touching /login after
+    # the first time — so that proxy was structurally wrong for the normal
+    # case, not just this one account: any user who logged in with a
+    # password more than 7 days ago and has been silently refreshing ever
+    # since would never register as having a "recent session" again, no
+    # matter how many times they reconnect a CGM device, and the shared
+    # poller would never pick them up. A successful refresh proves an
+    # active session exactly as well as a fresh login does for this
+    # purpose, so it now records the same way.
+    ip = http_request.client.host if http_request.client else None
+    await _record_login_attempt(db, user.email, ip, successful=True)
 
     return LoginResponse(
         access_token=access_token,

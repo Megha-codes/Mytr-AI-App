@@ -5,6 +5,7 @@ underlying Libre credential.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from uuid import UUID
@@ -16,6 +17,8 @@ from ...core.encryption import decrypt
 from ...core.secrets_manager import secrets_manager
 from ...models.device import Device
 from ...models.user import CGMDevice, LoginAttempt, User
+
+logger = logging.getLogger("mytr.libre_account_registry")
 
 # Without this bound, a user who connected Libre once and never opened the
 # app or paired a desk device again would still generate unbounded Abbott
@@ -43,6 +46,7 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
     """
     secrets_mgr = secrets_mgr or secrets_manager
     candidate_user_ids = await secrets_mgr.list_libre_user_ids()
+    logger.info("libre_account_registry: %d candidate(s) with stored Libre credentials", len(candidate_user_ids))
     if not candidate_user_ids:
         return []
 
@@ -53,11 +57,13 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
         try:
             user_id = UUID(raw_user_id)
         except ValueError:
+            logger.warning("libre_account_registry: candidate %r is not a valid UUID, skipping", raw_user_id)
             continue
 
         user_result = await db.execute(select(User).where(User.id == user_id))
         user = user_result.scalar_one_or_none()
         if user is None:
+            logger.warning("libre_account_registry: user %s not found (stale secret?), skipping", user_id)
             continue
 
         cgm_result = await db.execute(
@@ -70,6 +76,7 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
         )
         cgm_device = cgm_result.scalar_one_or_none()
         if cgm_device is None:
+            logger.info("libre_account_registry: user %s has no active LIBRE cgm_devices row, skipping", user_id)
             continue
 
         device_result = await db.execute(
@@ -91,16 +98,27 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
             has_recent_session = login_result.scalar_one_or_none() is not None
 
         if not (has_active_device or has_recent_session):
+            logger.info(
+                "libre_account_registry: user %s has an active CGM connection but neither a "
+                "paired desk device nor a successful login/refresh in the last %s — not eligible yet",
+                user_id, RECENT_SESSION_WINDOW,
+            )
             continue
 
         creds = await secrets_mgr.get_libre_credentials(raw_user_id)
         if creds is None:
+            logger.warning("libre_account_registry: user %s has no stored Libre credentials despite being a candidate, skipping", user_id)
             continue
         try:
             password = decrypt(creds.encrypted_password)
         except Exception:
+            logger.exception("libre_account_registry: could not decrypt stored credentials for user %s, skipping", user_id)
             continue
 
+        logger.info(
+            "libre_account_registry: user %s is eligible (active_device=%s, recent_session=%s)",
+            user_id, has_active_device, has_recent_session,
+        )
         eligible.append(
             EligibleAccount(
                 user_id=user_id,

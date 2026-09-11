@@ -90,6 +90,10 @@ class LibreIngestionService:
         """Refreshes the account registry on an interval, starting/stopping
         one background poll task per distinct Libre account as eligibility
         changes. Runs until `stop()` is called."""
+        logger.info(
+            "libre_ingestion: run_forever started (registry refresh every %ss, poll every %ss)",
+            self._registry_refresh_seconds, self._poll_interval_seconds,
+        )
         while not self._stopped.is_set():
             try:
                 await self.refresh_loops()
@@ -101,6 +105,7 @@ class LibreIngestionService:
                 )
             except asyncio.TimeoutError:
                 pass
+        logger.info("libre_ingestion: run_forever stopped")
 
     async def stop(self) -> None:
         self._stopped.set()
@@ -118,24 +123,35 @@ class LibreIngestionService:
             accounts = await get_eligible_accounts(db)
         groups = group_by_credential(accounts)
 
-        for email in list(self._tasks):
-            if email not in groups:
-                self._tasks[email].cancel()
-                del self._tasks[email]
+        stopped = [email for email in self._tasks if email not in groups]
+        for email in stopped:
+            self._tasks[email].cancel()
+            del self._tasks[email]
 
+        started = []
         for email, group_accounts in groups.items():
             existing = self._tasks.get(email)
             if existing is None or existing.done():
                 self._tasks[email] = asyncio.create_task(self._poll_loop(email, group_accounts))
+                started.append(email)
+
+        logger.info(
+            "libre_ingestion: registry refresh — %d eligible account(s), %d poll loop(s) started, "
+            "%d stopped, %d already running",
+            len(groups), len(started), len(stopped), len(groups) - len(started),
+        )
 
     async def _poll_loop(self, email: str, accounts: list[EligibleAccount]) -> None:
+        logger.info("libre_ingestion: starting poll loop for %s (%d mytr account(s) following it)", email, len(accounts))
         while True:
             try:
-                await self.poll_account_once(email, accounts)
+                written = await self.poll_account_once(email, accounts)
+                logger.info("libre_ingestion: poll cycle for %s wrote %d row(s)", email, written)
             except asyncio.CancelledError:
+                logger.info("libre_ingestion: poll loop for %s cancelled", email)
                 raise
             except Exception:
-                logger.exception("Libre poll failed for account")
+                logger.exception("libre_ingestion: poll failed for %s", email)
             await asyncio.sleep(self._poll_interval_seconds)
 
     # ── One fetch+ingest cycle — the testable unit ──────────────────────────
