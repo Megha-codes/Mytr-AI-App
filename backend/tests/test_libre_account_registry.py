@@ -127,6 +127,61 @@ async def test_recent_login_alone_is_sufficient_without_a_device():
     await engine.dispose()
 
 
+# ── Timezone resolution ──────────────────────────────────────────────────────
+#
+# Regression coverage for a real production bug: users.timezone has
+# server_default='UTC' and nothing anywhere in the app ever sets it to a real
+# IANA zone, so it was always the literal string "UTC" for every account —
+# never the operator-configured LIBRE_ACCOUNT_TIMEZONE the on-demand
+# connect-time fetch already respects. Treating an account's real local
+# Libre timestamps as already-UTC shifts every stored reading forward by the
+# account's real UTC offset (confirmed directly: a reading's recorded_at came
+# out in the future relative to the database's own clock, for a real
+# India-based account).
+
+async def test_timezone_falls_back_to_the_global_setting_when_user_timezone_is_the_unset_default(monkeypatch):
+    from app.services.cgm import libre_account_registry as registry_mod
+
+    monkeypatch.setattr(registry_mod.settings, "LIBRE_ACCOUNT_TIMEZONE", "Asia/Kolkata")
+
+    engine, session_factory = await build_sqlite_db()
+    user = await make_user(session_factory, "a@example.com")  # timezone left at its DB default: "UTC"
+    await _store_libre_creds(user.id)
+    await _add_cgm_device(session_factory, user.id)
+    await _add_desk_device(session_factory, user.id)
+
+    async with session_factory() as db:
+        accounts = await get_eligible_accounts(db)
+
+    match = next(a for a in accounts if a.user_id == user.id)
+    assert match.timezone == "Asia/Kolkata"
+    await engine.dispose()
+
+
+async def test_timezone_respects_a_real_per_user_value_once_actually_set(monkeypatch):
+    from sqlalchemy import update
+    from app.models.user import User
+    from app.services.cgm import libre_account_registry as registry_mod
+
+    monkeypatch.setattr(registry_mod.settings, "LIBRE_ACCOUNT_TIMEZONE", "")  # nothing globally configured
+
+    engine, session_factory = await build_sqlite_db()
+    user = await make_user(session_factory, "a@example.com")
+    async with session_factory() as db:
+        await db.execute(update(User).where(User.id == user.id).values(timezone="Europe/London"))
+        await db.commit()
+    await _store_libre_creds(user.id)
+    await _add_cgm_device(session_factory, user.id)
+    await _add_desk_device(session_factory, user.id)
+
+    async with session_factory() as db:
+        accounts = await get_eligible_accounts(db)
+
+    match = next(a for a in accounts if a.user_id == user.id)
+    assert match.timezone == "Europe/London"
+    await engine.dispose()
+
+
 async def test_no_device_and_no_recent_session_is_excluded():
     """The bound: an account connected once, never opened since, and no
     desk device — must not generate unbounded Abbott traffic forever."""

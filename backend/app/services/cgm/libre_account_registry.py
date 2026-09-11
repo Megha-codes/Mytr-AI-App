@@ -13,6 +13,7 @@ from uuid import UUID
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ...core.config import settings
 from ...core.encryption import decrypt
 from ...core.secrets_manager import secrets_manager
 from ...models.device import Device
@@ -119,12 +120,33 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
             "libre_account_registry: user %s is eligible (active_device=%s, recent_session=%s)",
             user_id, has_active_device, has_recent_session,
         )
+        # Real production bug: users.timezone has server_default='UTC' and
+        # nothing anywhere in this app ever sets it to a real IANA zone (no
+        # onboarding step, no settings screen, no device-locale detection) —
+        # so this was ALWAYS the literal string "UTC" for every account,
+        # never the operator-configured global LIBRE_ACCOUNT_TIMEZONE that
+        # the on-demand connect-time fetch (libre_service.py) already
+        # respects. Libre reports timestamps in the account's real local
+        # wall-clock time with no timezone marker; treating that as
+        # already-UTC (what "UTC" here caused) stores every reading shifted
+        # forward by the account's real UTC offset — e.g. +5:30 for India,
+        # confirmed directly: a reading's recorded_at came out in the future
+        # relative to the database's own clock. Prefer the per-user column
+        # only once something actually sets it to a real zone; until then,
+        # fall back to the same global setting the other fetch path uses,
+        # rather than a silent, wrong "UTC" that never surfaces a warning
+        # (ZoneInfo("UTC") is a perfectly valid zone, so _resolve_zone never
+        # logs anything is missing).
+        account_timezone = user.timezone
+        if not account_timezone or account_timezone == "UTC":
+            account_timezone = settings.LIBRE_ACCOUNT_TIMEZONE or "UTC"
+
         eligible.append(
             EligibleAccount(
                 user_id=user_id,
                 email=creds.email,
                 password=password,
-                timezone=user.timezone or "UTC",
+                timezone=account_timezone,
                 cgm_device_id=cgm_device.id,
             )
         )
