@@ -85,10 +85,14 @@ async def connect_libre(
     validation = await libre_service.validate_credentials(request.email, request.password)
 
     if not validation.success:
+        # Pass through what validate_credentials actually determined —
+        # this used to hardcode "INVALID_CREDENTIALS" for every failure
+        # reason, so e.g. "Connections not enabled" or a transient Abbott
+        # outage were both shown to the user as wrong credentials.
         return ConnectionResult(
             connected=False,
             device_type="LIBRE",
-            error_code="INVALID_CREDENTIALS",
+            error_code=validation.error_code,
             error_message=validation.error_message
         )
 

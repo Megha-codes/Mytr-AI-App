@@ -36,6 +36,15 @@ class LibreServiceError(Exception):
 class LibreValidationResult:
     success:             bool
     error_message:       Optional[str] = None
+    # One of the codes app/api/cgm_connect.py's ConnectionResult.error_code
+    # actually passes through to the frontend (_mapLibreBackendError in
+    # cgm_connection_provider.dart) — previously the route hardcoded
+    # "INVALID_CREDENTIALS" for every failure regardless of what actually
+    # went wrong here, so e.g. "Connections not enabled" got shown to the
+    # user as "Incorrect LibreLinkUp credentials". None on the generic/
+    # unrecognized-exception path lets the frontend's own default case
+    # apply, rather than this guessing a specific reason it doesn't know.
+    error_code:          Optional[str] = None
     sensor_generation:   Optional[str] = None   # "2" or "3"
     sensor_expiry_date:  Optional[str] = None   # ISO-8601 string
     region_base:         Optional[str] = None
@@ -97,6 +106,7 @@ class LibreCGMService(BaseCGMService):
                 if not auth_data:
                     return LibreValidationResult(
                         success=False,
+                        error_code="INVALID_CREDENTIALS",
                         error_message="Invalid LibreLinkUp credentials or unsupported region.",
                     )
 
@@ -106,6 +116,7 @@ class LibreCGMService(BaseCGMService):
             if not connections:
                 return LibreValidationResult(
                     success=False,
+                    error_code="CONNECTIONS_NOT_ENABLED",
                     error_message=(
                         "LibreLinkUp Connections not enabled. "
                         "Open your FreeStyle LibreLink app → Menu → "
@@ -128,10 +139,12 @@ class LibreCGMService(BaseCGMService):
             if exc.response.status_code == 401:
                 return LibreValidationResult(
                     success=False,
+                    error_code="INVALID_CREDENTIALS",
                     error_message="Invalid LibreLinkUp credentials. Check your email and password.",
                 )
             return LibreValidationResult(
                 success=False,
+                error_code="SERVICE_UNAVAILABLE",
                 error_message="LibreLinkUp service unavailable. Please try again.",
             )
         except Exception as e:

@@ -15,9 +15,12 @@ directly in this module — see git history — and is wrong.
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 import httpx
+
+logger = logging.getLogger("mytr.libre_client")
 
 LIBRE_BASES = [
     "https://api.libreview.io",      # US / Global
@@ -36,6 +39,102 @@ LLU_HEADERS = {
     "connection": "Keep-Alive",
 }
 
+# Max times to follow Abbott's own region-redirect signal for one login
+# attempt (see _login_once) before giving up on that email — a safety cap,
+# not a real expectation of long chains; Abbott's redirect should resolve
+# in one hop.
+_MAX_REDIRECT_HOPS = 3
+
+
+def _region_base_from_code(region: str) -> str:
+    """Abbott's redirect payload gives a bare region code ("de", "us", ...),
+    not a full host — map it onto our base-URL naming, defaulting to the
+    global host for "us"/unrecognised codes rather than guessing a URL that
+    doesn't exist."""
+    region = (region or "").lower()
+    if region in ("us", "global", ""):
+        return "https://api.libreview.io"
+    candidate = f"https://api-{region}.libreview.io"
+    return candidate
+
+
+async def _login_once(
+    client: httpx.AsyncClient, base: str, email: str, password: str
+) -> Optional[tuple[str, str]]:
+    """One login POST against a single region base. Returns (token, base) on
+    success, or None — including when Abbott's own response says "wrong
+    region, try this one instead" (data.redirect), which is handled here by
+    following the redirect immediately (bounded by _MAX_REDIRECT_HOPS)
+    rather than falling through to the caller's fixed region list, since the
+    redirect target is authoritative and may not even be one of our six
+    hardcoded bases in the order the caller would otherwise try them.
+
+    TEMPORARY: logs Abbott's actual response (status + body) for every
+    attempt, since a login that Abbott's own app accepts but this client
+    doesn't needs to be diagnosed against the real response shape rather
+    than guessed at — remove once the CGM-connect-rejects-valid-credentials
+    issue is confirmed fixed. Never logs the password.
+    """
+    visited = set()
+    current_base = base
+
+    for _ in range(_MAX_REDIRECT_HOPS):
+        if current_base in visited:
+            logger.warning(
+                "libre_client: redirect loop detected (base=%s already tried), aborting this chain",
+                current_base,
+            )
+            return None
+        visited.add(current_base)
+
+        try:
+            resp = await client.post(
+                f"{current_base}/llu/auth/login",
+                json={"email": email, "password": password},
+                headers=LLU_HEADERS,
+            )
+        except Exception as exc:
+            logger.warning("libre_client: request to %s failed: %s", current_base, exc)
+            return None
+
+        # TEMPORARY diagnostic logging — status + body only, password never
+        # included (it's only ever in the outgoing request, not logged here).
+        try:
+            body_for_log = resp.json()
+        except Exception:
+            body_for_log = resp.text[:500]
+        logger.warning(
+            "libre_client: login attempt base=%s status=%s body=%s",
+            current_base, resp.status_code, body_for_log,
+        )
+
+        if resp.status_code != 200:
+            return None
+
+        data = resp.json().get("data", {})
+
+        auth_ticket = data.get("authTicket")
+        if auth_ticket and auth_ticket.get("token"):
+            return auth_ticket["token"], current_base
+
+        if data.get("redirect"):
+            next_base = _region_base_from_code(data.get("region", ""))
+            logger.warning(
+                "libre_client: Abbott redirected base=%s -> region=%s (%s)",
+                current_base, data.get("region"), next_base,
+            )
+            current_base = next_base
+            continue
+
+        # 200 with neither a token nor a redirect — Abbott's body-level
+        # status/error (LibreView returns HTTP 200 for many application-level
+        # errors, e.g. bad credentials, with the real outcome in the JSON
+        # body) is what the diagnostic log line above will show.
+        return None
+
+    logger.warning("libre_client: exceeded %d redirect hops, giving up", _MAX_REDIRECT_HOPS)
+    return None
+
 
 async def authenticate_any_region(
     client: httpx.AsyncClient,
@@ -48,22 +147,25 @@ async def authenticate_any_region(
     `preferred_region` (the durably-cached region_base from a prior
     successful login) is tried first so a restarted poller doesn't have to
     re-scan all six hosts before its first successful poll.
+
+    Email is trimmed and lowercased before sending — Abbott's login treats
+    the account email case-insensitively (matching every community
+    LibreLinkUp API client's normalization), and a mobile keyboard's
+    autocapitalize/autocomplete can easily hand this function a differently-
+    cased or whitespace-padded value than what's registered, causing a
+    real, working account to be rejected for a reason that has nothing to
+    do with the password being wrong.
     """
+    email = email.strip().lower()
+
     ordered_bases = LIBRE_BASES
     if preferred_region and preferred_region in LIBRE_BASES:
         ordered_bases = [preferred_region] + [b for b in LIBRE_BASES if b != preferred_region]
 
     for base in ordered_bases:
-        try:
-            resp = await client.post(
-                f"{base}/llu/auth/login",
-                json={"email": email, "password": password},
-                headers=LLU_HEADERS,
-            )
-            if resp.status_code == 200:
-                return resp.json()["data"]["authTicket"]["token"], base
-        except Exception:
-            continue
+        result = await _login_once(client, base, email, password)
+        if result is not None:
+            return result
     return None
 
 
