@@ -21,9 +21,19 @@ class DeviceConnectionWidget extends ConsumerStatefulWidget {
 }
 
 class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget> {
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
   }
 
   @override
@@ -78,10 +88,11 @@ class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget>
   }
 
   Widget _buildLibreForm() {
-    // Simplified form for Libre credentials
     return Column(
       children: [
         TextField(
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
           decoration: InputDecoration(
             labelText: 'LibreLinkUp Email',
             filled: true,
@@ -91,6 +102,7 @@ class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget>
         ),
         const SizedBox(height: 12),
         TextField(
+          controller: _passwordController,
           obscureText: true,
           decoration: InputDecoration(
             labelText: 'Password',
@@ -115,8 +127,15 @@ class _DeviceConnectionWidgetState extends ConsumerState<DeviceConnectionWidget>
   void _handleConnect() {
     final notifier = ref.read(cgmConnectionProvider.notifier);
     if (widget.deviceType.startsWith('LIBRE')) {
-      // In a real app, we'd pass email/password from the form
-      notifier.connectLibre('user@example.com', 'password123');
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+      if (email.isEmpty || password.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please enter your LibreLinkUp email and password.')),
+        );
+        return;
+      }
+      notifier.connectLibre(email, password);
     } else if (widget.deviceType == 'MANUAL') {
       notifier.setManualEntry();
     }
