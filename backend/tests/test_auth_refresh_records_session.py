@@ -23,11 +23,11 @@ from datetime import datetime, timezone
 
 from sqlalchemy import select
 
-from app.api.auth import RefreshRequest, refresh_token
+from app.api.auth import LoginRequest, RefreshRequest, login, refresh_token
 from app.core.encryption import encrypt
 from app.core.secrets_manager import secrets_manager
-from app.core.security import create_refresh_token
-from app.models.user import CGMDevice, LoginAttempt
+from app.core.security import create_refresh_token, get_password_hash
+from app.models.user import CGMDevice, LoginAttempt, User
 from app.services.cgm.libre_account_registry import get_eligible_accounts
 
 from .conftest import build_sqlite_db, make_user
@@ -99,3 +99,41 @@ async def test_refresh_only_session_still_counts_as_recent_for_the_libre_poller(
         "a user with no desk device and no /auth/login, only a successful "
         "/auth/refresh, must still be eligible for the shared Libre poller"
     )
+
+
+async def test_login_records_a_successful_login_attempt():
+    """A second, bigger gap found while chasing this same bug: only
+    /auth/login's FAILURE branch ever recorded a LoginAttempt row — the
+    success path never did. has_recent_session requires successful=True,
+    so it could never be satisfied by an actual login at all, correct
+    password or not, independent of the /auth/refresh gap above."""
+    engine, session_factory = await build_sqlite_db()
+
+    password = "correct horse battery staple"
+    async with session_factory() as db:
+        user = User(
+            id=uuid.uuid4(), email="loginuser@example.com",
+            password_hash=get_password_hash(password),
+            email_verified=True, created_at=datetime.now(timezone.utc),
+        )
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+
+    async with session_factory() as db:
+        response = await login(
+            LoginRequest(email=user.email, password=password), _FakeRequest(), db,
+        )
+
+    assert response.access_token
+
+    async with session_factory() as db:
+        result = await db.execute(
+            select(LoginAttempt).where(
+                LoginAttempt.email == user.email.lower(),
+                LoginAttempt.successful.is_(True),
+            )
+        )
+        attempts = result.scalars().all()
+
+    assert len(attempts) == 1, "login should record exactly one successful LoginAttempt"

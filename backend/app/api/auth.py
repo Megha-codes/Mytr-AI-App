@@ -224,6 +224,13 @@ async def login(request: LoginRequest, http_request: Request, db: AsyncSession =
 
     # Successful login clears the failure counter (unlocks the account).
     await _clear_failed_attempts(db, email)
+    # A real, pre-existing gap found while chasing the Libre-poller-never-
+    # sees-new-connections bug: only the failure branch above ever recorded
+    # a LoginAttempt row. get_eligible_accounts' has_recent_session check
+    # requires successful=True, so it could never be satisfied by an actual
+    # login at all — not even a fresh, correct-password one — regardless of
+    # the /auth/refresh fix elsewhere in this file.
+    await _record_login_attempt(db, email, ip, successful=True)
 
     tv = user.token_version or 0
     access_token = create_access_token(str(user.id), token_version=tv)
