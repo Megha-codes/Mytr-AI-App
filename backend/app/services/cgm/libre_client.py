@@ -15,6 +15,7 @@ directly in this module — see git history — and is wrong.
 
 from __future__ import annotations
 
+import hashlib
 import logging
 from typing import Optional
 
@@ -46,6 +47,22 @@ LLU_HEADERS = {
 _MAX_REDIRECT_HOPS = 3
 
 
+def account_id_header(user_id: str) -> str:
+    """Abbott requires an `Account-Id` header — SHA-256 hex digest of the
+    logged-in user's id (from the login response's data.user.id) — on every
+    authenticated call AFTER login (/llu/connections, /llu/connections/{id}/
+    graph). Confirmed directly from a real production failure: login
+    succeeded (200, authTicket present) but the very next call,
+    /llu/connections, came back 400 {"message": "RequiredHeaderMissing"} —
+    this header, entirely absent before, is what was missing. Matches every
+    actively-maintained community LibreLinkUp client (libre-link-up-api-
+    client, pylibrelinkup, and the Home Assistant LibreLinkUp integrations
+    all compute this the same way); not something Abbott documents
+    officially anywhere.
+    """
+    return hashlib.sha256(user_id.encode()).hexdigest()
+
+
 def _region_base_from_code(region: str) -> str:
     """Abbott's redirect payload gives a bare region code ("de", "us", ...),
     not a full host — map it onto our base-URL naming, defaulting to the
@@ -60,14 +77,18 @@ def _region_base_from_code(region: str) -> str:
 
 async def _login_once(
     client: httpx.AsyncClient, base: str, email: str, password: str
-) -> Optional[tuple[str, str]]:
-    """One login POST against a single region base. Returns (token, base) on
-    success, or None — including when Abbott's own response says "wrong
-    region, try this one instead" (data.redirect), which is handled here by
-    following the redirect immediately (bounded by _MAX_REDIRECT_HOPS)
-    rather than falling through to the caller's fixed region list, since the
-    redirect target is authoritative and may not even be one of our six
-    hardcoded bases in the order the caller would otherwise try them.
+) -> Optional[tuple[str, str, Optional[str]]]:
+    """One login POST against a single region base. Returns (token, base,
+    account_id) on success — account_id is the raw data.user.id from
+    Abbott's response (None if that field is ever absent; callers must
+    treat a missing account_id as "can't call anything past login", not
+    silently omit the header it's needed for) — or None on failure,
+    including when Abbott's own response says "wrong region, try this one
+    instead" (data.redirect), which is handled here by following the
+    redirect immediately (bounded by _MAX_REDIRECT_HOPS) rather than
+    falling through to the caller's fixed region list, since the redirect
+    target is authoritative and may not even be one of our six hardcoded
+    bases in the order the caller would otherwise try them.
 
     TEMPORARY: logs Abbott's actual response (status + body) for every
     attempt, since a login that Abbott's own app accepts but this client
@@ -115,7 +136,13 @@ async def _login_once(
 
         auth_ticket = data.get("authTicket")
         if auth_ticket and auth_ticket.get("token"):
-            return auth_ticket["token"], current_base
+            account_id = (data.get("user") or {}).get("id")
+            if not account_id:
+                logger.warning(
+                    "libre_client: login succeeded but data.user.id is missing — "
+                    "Account-Id header can't be computed, subsequent calls will fail"
+                )
+            return auth_ticket["token"], current_base, account_id
 
         if data.get("redirect"):
             next_base = _region_base_from_code(data.get("region", ""))
@@ -141,8 +168,12 @@ async def authenticate_any_region(
     email: str,
     password: str,
     preferred_region: Optional[str] = None,
-) -> Optional[tuple[str, str]]:
+) -> Optional[tuple[str, str, Optional[str]]]:
     """Log in, scanning regions until one accepts the credentials.
+
+    Returns (token, region_base, account_id) — account_id must be passed to
+    get_connections/get_graph_data as the Account-Id header they require
+    post-login (see account_id_header).
 
     `preferred_region` (the durably-cached region_base from a prior
     successful login) is tried first so a restarted poller doesn't have to
@@ -187,11 +218,13 @@ def _log_response(label: str, base: str, resp: httpx.Response) -> None:
     )
 
 
-async def get_connections(client: httpx.AsyncClient, base: str, token: str) -> list:
-    resp = await client.get(
-        f"{base}/llu/connections",
-        headers={**LLU_HEADERS, "Authorization": f"Bearer {token}"},
-    )
+async def get_connections(
+    client: httpx.AsyncClient, base: str, token: str, account_id: Optional[str] = None
+) -> list:
+    headers = {**LLU_HEADERS, "Authorization": f"Bearer {token}"}
+    if account_id:
+        headers["Account-Id"] = account_id_header(account_id)
+    resp = await client.get(f"{base}/llu/connections", headers=headers)
     _log_response("connections", base, resp)
     resp.raise_for_status()
     data = resp.json().get("data", [])
@@ -208,11 +241,13 @@ async def get_connections(client: httpx.AsyncClient, base: str, token: str) -> l
     return data
 
 
-async def get_graph_data(client: httpx.AsyncClient, base: str, token: str, patient_id: str) -> list:
-    resp = await client.get(
-        f"{base}/llu/connections/{patient_id}/graph",
-        headers={**LLU_HEADERS, "Authorization": f"Bearer {token}"},
-    )
+async def get_graph_data(
+    client: httpx.AsyncClient, base: str, token: str, patient_id: str, account_id: Optional[str] = None
+) -> list:
+    headers = {**LLU_HEADERS, "Authorization": f"Bearer {token}"}
+    if account_id:
+        headers["Account-Id"] = account_id_header(account_id)
+    resp = await client.get(f"{base}/llu/connections/{patient_id}/graph", headers=headers)
     _log_response("graph", base, resp)
     resp.raise_for_status()
     return resp.json()["data"]["graphData"]

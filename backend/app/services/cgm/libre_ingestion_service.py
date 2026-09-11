@@ -70,10 +70,12 @@ class LibreIngestionService:
         self._registry_refresh_seconds = registry_refresh_seconds
         self._fanout_hub = fanout_hub or default_fanout_hub
 
-        # In-process cache: email -> (token, region_base). The durable half
-        # of this (region_base surviving a restart) lives in
+        # In-process cache: email -> (token, region_base, account_id). The
+        # durable half of this (region_base surviving a restart) lives in
         # cgm_devices.region_base — see _load_cached_region/_persist_region.
-        self._sessions: dict[str, tuple[Optional[str], Optional[str]]] = {}
+        # account_id isn't durably cached — it's cheap to re-derive from the
+        # next login response, and a restart re-logs-in anyway.
+        self._sessions: dict[str, tuple[Optional[str], Optional[str], Optional[str]]] = {}
         self._tasks: dict[str, asyncio.Task] = {}
         self._stopped = asyncio.Event()
 
@@ -144,7 +146,7 @@ class LibreIngestionService:
         N DB writes). Returns a best-effort count of rows actually written —
         for observability only; tests should assert real row counts."""
         password = accounts[0].password
-        token, region_base = self._sessions.get(email, (None, None))
+        token, region_base, account_id = self._sessions.get(email, (None, None, None))
 
         async with self._client() as client:
             if token is None:
@@ -156,12 +158,12 @@ class LibreIngestionService:
                 if auth is None:
                     logger.warning("Libre login failed (region scan exhausted)")
                     return 0
-                token, region_base = auth
-                self._sessions[email] = (token, region_base)
+                token, region_base, account_id = auth
+                self._sessions[email] = (token, region_base, account_id)
                 await self._persist_region(accounts, region_base)
 
             try:
-                connections = await get_connections(client, region_base, token)
+                connections = await get_connections(client, region_base, token, account_id)
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code != 401:
                     raise
@@ -172,10 +174,10 @@ class LibreIngestionService:
                 if auth is None:
                     self._sessions.pop(email, None)
                     return 0
-                token, region_base = auth
-                self._sessions[email] = (token, region_base)
+                token, region_base, account_id = auth
+                self._sessions[email] = (token, region_base, account_id)
                 await self._persist_region(accounts, region_base)
-                connections = await get_connections(client, region_base, token)
+                connections = await get_connections(client, region_base, token, account_id)
 
             if not connections:
                 return 0
@@ -183,7 +185,7 @@ class LibreIngestionService:
             connection = connections[0]
             patient_id = connection["patientId"]
             sensor_id = _resolve_sensor_id(connection)
-            graph_data = await get_graph_data(client, region_base, token, patient_id)
+            graph_data = await get_graph_data(client, region_base, token, patient_id, account_id)
 
         written = 0
         async with self._timescale_session_factory() as ts_db:

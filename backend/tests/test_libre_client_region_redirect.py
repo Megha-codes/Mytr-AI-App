@@ -33,13 +33,15 @@ async def test_redirect_response_is_followed_to_the_indicated_region():
             # HTTP 200, no authTicket, just a redirect + region code.
             return httpx.Response(200, json={"data": {"redirect": True, "region": "de"}})
         if base == "https://api-de.libreview.io":
-            return httpx.Response(200, json={"data": {"authTicket": {"token": "real-tok"}}})
+            return httpx.Response(200, json={
+                "data": {"authTicket": {"token": "real-tok"}, "user": {"id": "uid-123"}},
+            })
         return httpx.Response(200, json={"data": {"redirect": True, "region": "de"}})
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         result = await authenticate_any_region(client, "user@example.com", "pw")
 
-    assert result == ("real-tok", "https://api-de.libreview.io")
+    assert result == ("real-tok", "https://api-de.libreview.io", "uid-123")
     # The redirect must be followed immediately, not require exhausting the
     # rest of the fixed region list first.
     assert seen_bases[0] == "https://api.libreview.io"
@@ -96,10 +98,12 @@ async def test_first_region_success_does_not_scan_the_rest():
 
     def handler(request: httpx.Request) -> httpx.Response:
         seen_bases.append(f"{request.url.scheme}://{request.url.host}")
-        return httpx.Response(200, json={"data": {"authTicket": {"token": "tok"}}})
+        return httpx.Response(200, json={
+            "data": {"authTicket": {"token": "tok"}, "user": {"id": "uid-123"}},
+        })
 
     async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
         result = await authenticate_any_region(client, "user@example.com", "pw")
 
-    assert result == ("tok", LIBRE_BASES[0])
+    assert result == ("tok", LIBRE_BASES[0], "uid-123")
     assert seen_bases == [LIBRE_BASES[0]]

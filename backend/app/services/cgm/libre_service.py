@@ -62,7 +62,7 @@ class LibreCGMService(BaseCGMService):
         # the first fetch and reused, so each subsequent poll is a single logged-in
         # request instead of re-scanning all six regional hosts and re-logging-in.
         # A 401 drops the entry and forces one re-login (see _fetch_reading).
-        self._sessions: dict[str, tuple[str, str]] = {}
+        self._sessions: dict[str, tuple[str, str, Optional[str]]] = {}
 
     # ── Public interface ─────────────────────────────────────────────────────
 
@@ -113,8 +113,8 @@ class LibreCGMService(BaseCGMService):
                         error_message="Invalid LibreLinkUp credentials or unsupported region.",
                     )
 
-                token, region_base = auth_data
-                connections = await get_connections(client, region_base, token)
+                token, region_base, account_id = auth_data
+                connections = await get_connections(client, region_base, token, account_id)
 
             if not connections:
                 return LibreValidationResult(
@@ -203,18 +203,18 @@ class LibreCGMService(BaseCGMService):
     ) -> CGMReading | None:
         try:
             async with self._client() as client:
-                token, region_base = await self._get_session(client, user_id, email, password)
+                token, region_base, account_id = await self._get_session(client, user_id, email, password)
                 try:
-                    readings = await self._graph_readings(client, region_base, token)
+                    readings = await self._graph_readings(client, region_base, token, account_id)
                 except httpx.HTTPStatusError as exc:
                     if exc.response.status_code != 401:
                         raise
                     # Cached token expired — drop it, re-establish once, retry.
                     self._sessions.pop(user_id, None)
-                    token, region_base = await self._get_session(
+                    token, region_base, account_id = await self._get_session(
                         client, user_id, email, password
                     )
-                    readings = await self._graph_readings(client, region_base, token)
+                    readings = await self._graph_readings(client, region_base, token, account_id)
 
             return self._find_closest_reading(readings, target_time, tolerance_minutes)
         except LibreServiceError:
@@ -225,9 +225,11 @@ class LibreCGMService(BaseCGMService):
 
     async def _get_session(
         self, client: httpx.AsyncClient, user_id: str, email: str, password: str
-    ) -> tuple[str, str]:
-        """Return a cached (token, region_base) for the user, or establish one by
-        scanning regions and logging in once, then cache it."""
+    ) -> tuple[str, str, Optional[str]]:
+        """Return a cached (token, region_base, account_id) for the user, or
+        establish one by scanning regions and logging in once, then cache
+        it. account_id is required by get_connections/get_graph_data's
+        Account-Id header — see libre_client.account_id_header."""
         cached = self._sessions.get(user_id)
         if cached is not None:
             return cached
@@ -240,13 +242,13 @@ class LibreCGMService(BaseCGMService):
         return auth
 
     async def _graph_readings(
-        self, client: httpx.AsyncClient, region_base: str, token: str
+        self, client: httpx.AsyncClient, region_base: str, token: str, account_id: Optional[str] = None
     ) -> list:
-        connections = await get_connections(client, region_base, token)
+        connections = await get_connections(client, region_base, token, account_id)
         if not connections:
             raise LibreServiceError("No LibreLinkUp connections (sharing not enabled)")
         patient_id = connections[0]["patientId"]
-        return await get_graph_data(client, region_base, token, patient_id)
+        return await get_graph_data(client, region_base, token, patient_id, account_id)
 
     def _find_closest_reading(
         self,
