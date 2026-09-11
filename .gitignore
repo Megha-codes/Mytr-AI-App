@@ -58,6 +58,12 @@ desktop.ini
 *.sqlite
 *.db
 
+# ── Deploy scratch ─────────────────────────────────────────────────────────────
+# Local staging copy of backend/ built fresh before every VPS deploy
+# (robocopy backend -> _deploy_staging, then scp'd) — pure build output,
+# never meant to be tracked.
+_deploy_staging/
+
 # ── Misc project files ────────────────────────────────────────────────────────
 backend_tree.txt
 frontend_tree.txt
