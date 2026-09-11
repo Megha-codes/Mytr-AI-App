@@ -169,13 +169,43 @@ async def authenticate_any_region(
     return None
 
 
+def _log_response(label: str, base: str, resp: httpx.Response) -> None:
+    # TEMPORARY diagnostic logging — see _login_once's docstring. Same
+    # reasoning applies here: the post-login /llu/connections call is where
+    # a real, Abbott-confirmed-correct login has been observed to still end
+    # up reported as "temporarily unavailable" (a non-401 HTTPStatusError
+    # from this call, or the /graph call below, being caught generically
+    # upstream with no record of what Abbott actually said). Never logs the
+    # bearer token or any credential.
+    try:
+        body_for_log = resp.json()
+    except Exception:
+        body_for_log = resp.text[:500]
+    logger.warning(
+        "libre_client: %s base=%s status=%s body=%s",
+        label, base, resp.status_code, body_for_log,
+    )
+
+
 async def get_connections(client: httpx.AsyncClient, base: str, token: str) -> list:
     resp = await client.get(
         f"{base}/llu/connections",
         headers={**LLU_HEADERS, "Authorization": f"Bearer {token}"},
     )
+    _log_response("connections", base, resp)
     resp.raise_for_status()
-    return resp.json().get("data", [])
+    data = resp.json().get("data", [])
+    # TEMPORARY: an account with more than one connection (e.g. a sensor
+    # swap in progress, old sensor still reporting alongside the new one)
+    # picks connections[0] unconditionally in libre_service.py — logging
+    # the full list here so we can see, from real data, whether that's ever
+    # actually wrong rather than guessing at a fix.
+    if len(data) > 1:
+        logger.warning(
+            "libre_client: account has %d connections, callers currently use only the first: %s",
+            len(data), data,
+        )
+    return data
 
 
 async def get_graph_data(client: httpx.AsyncClient, base: str, token: str, patient_id: str) -> list:
@@ -183,5 +213,6 @@ async def get_graph_data(client: httpx.AsyncClient, base: str, token: str, patie
         f"{base}/llu/connections/{patient_id}/graph",
         headers={**LLU_HEADERS, "Authorization": f"Bearer {token}"},
     )
+    _log_response("graph", base, resp)
     resp.raise_for_status()
     return resp.json()["data"]["graphData"]

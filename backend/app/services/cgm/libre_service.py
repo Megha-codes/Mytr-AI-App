@@ -1,4 +1,5 @@
 import httpx
+import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -13,6 +14,8 @@ from ..libre_timestamp import libre_timestamp_to_epoch
 # (the 24/7 poller, architecture-v3.md §4.3) so there is exactly one copy of
 # the request mechanics to keep correct.
 from .libre_client import authenticate_any_region, get_connections, get_graph_data
+
+logger = logging.getLogger("mytr.libre_service")
 
 _TREND_MAP = {
     1: ("FALLING_FAST",  "↓↓"),
@@ -124,7 +127,16 @@ class LibreCGMService(BaseCGMService):
                     ),
                 )
 
+            # TEMPORARY: get_connections already logs the full list when
+            # there's more than one; this line marks which one validate_
+            # credentials actually acts on, so the two log lines together
+            # answer "does connections[0] pick the right device" from real
+            # data instead of guessing.
             connection  = connections[0]
+            logger.warning(
+                "libre_service.validate_credentials: using connections[0] of %d: patientId=%s device=%s sensor=%s",
+                len(connections), connection.get("patientId"), connection.get("device"), connection.get("sensor"),
+            )
             generation  = self._detect_sensor_generation(connection.get("device", {}))
             expiry      = self._sensor_expiry(connection.get("sensor", {}), generation)
 
@@ -136,6 +148,20 @@ class LibreCGMService(BaseCGMService):
             )
 
         except httpx.HTTPStatusError as exc:
+            # TEMPORARY: this is the branch that produces "Abbott's servers
+            # are temporarily unavailable" (SERVICE_UNAVAILABLE) — a real
+            # login succeeding (see _login_once's log) but the *next* call
+            # (get_connections, or get_graph_data elsewhere) raising a
+            # non-401 status has been observed to land here with nothing
+            # logged about what Abbott actually said. get_connections/
+            # get_graph_data now log status+body themselves before this
+            # exception is even raised (see _log_response in libre_client.py)
+            # — this line adds the exception's own repr so the two can be
+            # cross-referenced in the log.
+            logger.warning(
+                "libre_service.validate_credentials: HTTPStatusError status=%s url=%s: %s",
+                exc.response.status_code, exc.request.url, exc,
+            )
             if exc.response.status_code == 401:
                 return LibreValidationResult(
                     success=False,
@@ -148,6 +174,14 @@ class LibreCGMService(BaseCGMService):
                 error_message="LibreLinkUp service unavailable. Please try again.",
             )
         except Exception as e:
+            # TEMPORARY — see above. A non-HTTPStatusError exception here
+            # (e.g. a KeyError from an unexpected response shape) previously
+            # vanished into a generic "Connection failed: {e}" message with
+            # no traceback recorded anywhere.
+            logger.warning(
+                "libre_service.validate_credentials: unexpected %s: %s",
+                type(e).__name__, e, exc_info=True,
+            )
             return LibreValidationResult(
                 success=False,
                 error_message=f"Connection failed: {str(e)}",

@@ -150,3 +150,114 @@ async def test_session_cached_across_polls(monkeypatch):
     assert counts["login"] == 1
     assert counts["connections"] == 3
     assert counts["graph"] == 3
+
+
+# ── validate_credentials (connect-time) ──────────────────────────────────────
+#
+# Regression coverage for a real production bug: an account confirmed
+# working in Abbott's own app — login succeeds, authTicket received — still
+# came back from connect_libre as connected:false with "Abbott's servers are
+# temporarily unavailable", and no cgm_devices row was saved. That message
+# only comes from the non-401 branch of validate_credentials' outer
+# `except httpx.HTTPStatusError`, meaning the failure was actually in the
+# POST-login /llu/connections call, not the login itself — a case none of
+# the tests above (which only exercise the on-demand fetch path, not
+# validate_credentials) covered at all before this.
+
+def _patch_async_client(monkeypatch, handler):
+    """validate_credentials constructs its own httpx.AsyncClient internally
+    (unlike _fetch_reading, which goes through the injectable self._client
+    seam) — patch the module's httpx.AsyncClient reference so it hands back
+    one wired to a MockTransport instead of making real requests.
+
+    `libre_service_mod.httpx` IS the same module object as the `httpx`
+    imported at the top of this file (module imports are singletons), so the
+    real AsyncClient class must be captured *before* patching — otherwise
+    the replacement calls itself forever.
+    """
+    import app.services.cgm.libre_service as libre_service_mod
+    real_async_client = httpx.AsyncClient
+
+    def _fake_client(*args, **kwargs):
+        return real_async_client(transport=httpx.MockTransport(handler))
+
+    monkeypatch.setattr(libre_service_mod.httpx, "AsyncClient", _fake_client)
+
+
+def _login_ok_response() -> httpx.Response:
+    return httpx.Response(200, json={"data": {"authTicket": {"token": "tok"}}})
+
+
+async def test_validate_credentials_maps_non_401_connections_error_to_service_unavailable(monkeypatch):
+    """The exact bug: login succeeds, /llu/connections comes back non-401 —
+    must map to SERVICE_UNAVAILABLE (the real reason), not silently succeed
+    or get mislabeled as invalid credentials."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/llu/auth/login" in request.url.path:
+            return _login_ok_response()
+        if "/llu/connections" in request.url.path:
+            return httpx.Response(503, json={"error": "abbott outage"})
+        return httpx.Response(404)
+
+    _patch_async_client(monkeypatch, handler)
+    result = await LibreCGMService().validate_credentials("user@example.com", "pw")
+
+    assert result.success is False
+    assert result.error_code == "SERVICE_UNAVAILABLE"
+
+
+async def test_validate_credentials_maps_401_connections_error_to_invalid_credentials(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/llu/auth/login" in request.url.path:
+            return _login_ok_response()
+        if "/llu/connections" in request.url.path:
+            return httpx.Response(401)
+        return httpx.Response(404)
+
+    _patch_async_client(monkeypatch, handler)
+    result = await LibreCGMService().validate_credentials("user@example.com", "pw")
+
+    assert result.success is False
+    assert result.error_code == "INVALID_CREDENTIALS"
+
+
+async def test_validate_credentials_reports_connections_not_enabled(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/llu/auth/login" in request.url.path:
+            return _login_ok_response()
+        if "/llu/connections" in request.url.path:
+            return httpx.Response(200, json={"data": []})
+        return httpx.Response(404)
+
+    _patch_async_client(monkeypatch, handler)
+    result = await LibreCGMService().validate_credentials("user@example.com", "pw")
+
+    assert result.success is False
+    assert result.error_code == "CONNECTIONS_NOT_ENABLED"
+
+
+async def test_validate_credentials_succeeds_with_two_connections_using_the_first(monkeypatch, caplog):
+    """Doesn't fix connections[0]-picks-arbitrarily (deferred until real
+    account data shows whether it's ever actually the wrong one — see the
+    TEMPORARY logging in libre_client.get_connections) but proves it doesn't
+    crash or fail validation when Abbott returns more than one, and that the
+    multi-connection case gets logged rather than silently picked."""
+    two_connections = [
+        {"patientId": "p1", "device": {"dtid": 40068}, "sensor": {"a": 1700000000}},
+        {"patientId": "p2", "device": {"dtid": 40075}, "sensor": {"a": 1700000000}},
+    ]
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if "/llu/auth/login" in request.url.path:
+            return _login_ok_response()
+        if "/llu/connections" in request.url.path:
+            return httpx.Response(200, json={"data": two_connections})
+        return httpx.Response(404)
+
+    _patch_async_client(monkeypatch, handler)
+    with caplog.at_level("WARNING"):
+        result = await LibreCGMService().validate_credentials("user@example.com", "pw")
+
+    assert result.success is True
+    assert "account has 2 connections" in caplog.text
+    assert "using connections[0] of 2" in caplog.text
