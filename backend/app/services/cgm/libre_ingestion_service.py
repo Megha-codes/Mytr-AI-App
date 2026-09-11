@@ -90,7 +90,7 @@ class LibreIngestionService:
         """Refreshes the account registry on an interval, starting/stopping
         one background poll task per distinct Libre account as eligibility
         changes. Runs until `stop()` is called."""
-        logger.info(
+        logger.warning(
             "libre_ingestion: run_forever started (registry refresh every %ss, poll every %ss)",
             self._registry_refresh_seconds, self._poll_interval_seconds,
         )
@@ -105,7 +105,7 @@ class LibreIngestionService:
                 )
             except asyncio.TimeoutError:
                 pass
-        logger.info("libre_ingestion: run_forever stopped")
+        logger.warning("libre_ingestion: run_forever stopped")
 
     async def stop(self) -> None:
         self._stopped.set()
@@ -135,20 +135,20 @@ class LibreIngestionService:
                 self._tasks[email] = asyncio.create_task(self._poll_loop(email, group_accounts))
                 started.append(email)
 
-        logger.info(
+        logger.warning(
             "libre_ingestion: registry refresh — %d eligible account(s), %d poll loop(s) started, "
             "%d stopped, %d already running",
             len(groups), len(started), len(stopped), len(groups) - len(started),
         )
 
     async def _poll_loop(self, email: str, accounts: list[EligibleAccount]) -> None:
-        logger.info("libre_ingestion: starting poll loop for %s (%d mytr account(s) following it)", email, len(accounts))
+        logger.warning("libre_ingestion: starting poll loop for %s (%d mytr account(s) following it)", email, len(accounts))
         while True:
             try:
                 written = await self.poll_account_once(email, accounts)
-                logger.info("libre_ingestion: poll cycle for %s wrote %d row(s)", email, written)
+                logger.warning("libre_ingestion: poll cycle for %s wrote %d row(s)", email, written)
             except asyncio.CancelledError:
-                logger.info("libre_ingestion: poll loop for %s cancelled", email)
+                logger.warning("libre_ingestion: poll loop for %s cancelled", email)
                 raise
             except Exception:
                 logger.exception("libre_ingestion: poll failed for %s", email)

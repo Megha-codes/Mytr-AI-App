@@ -46,7 +46,7 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
     """
     secrets_mgr = secrets_mgr or secrets_manager
     candidate_user_ids = await secrets_mgr.list_libre_user_ids()
-    logger.info("libre_account_registry: %d candidate(s) with stored Libre credentials", len(candidate_user_ids))
+    logger.warning("libre_account_registry: %d candidate(s) with stored Libre credentials", len(candidate_user_ids))
     if not candidate_user_ids:
         return []
 
@@ -76,7 +76,7 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
         )
         cgm_device = cgm_result.scalar_one_or_none()
         if cgm_device is None:
-            logger.info("libre_account_registry: user %s has no active LIBRE cgm_devices row, skipping", user_id)
+            logger.warning("libre_account_registry: user %s has no active LIBRE cgm_devices row, skipping", user_id)
             continue
 
         device_result = await db.execute(
@@ -98,7 +98,7 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
             has_recent_session = login_result.scalar_one_or_none() is not None
 
         if not (has_active_device or has_recent_session):
-            logger.info(
+            logger.warning(
                 "libre_account_registry: user %s has an active CGM connection but neither a "
                 "paired desk device nor a successful login/refresh in the last %s — not eligible yet",
                 user_id, RECENT_SESSION_WINDOW,
@@ -115,7 +115,7 @@ async def get_eligible_accounts(db: AsyncSession, secrets_mgr=None) -> list[Elig
             logger.exception("libre_account_registry: could not decrypt stored credentials for user %s, skipping", user_id)
             continue
 
-        logger.info(
+        logger.warning(
             "libre_account_registry: user %s is eligible (active_device=%s, recent_session=%s)",
             user_id, has_active_device, has_recent_session,
         )
