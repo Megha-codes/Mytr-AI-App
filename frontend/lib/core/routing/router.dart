@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../navigation/main_shell.dart';
-import '../../features/profile/providers/user_profile_provider.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/auth/ui/screens/login_screen.dart';
 import '../../features/auth/ui/screens/forgot_password_screen.dart';
@@ -20,7 +19,6 @@ import '../../features/profile/ui/screens/account_settings_screen.dart';
 import '../../features/devices/ui/screens/device_management_screen.dart';
 import '../../features/devices/ui/screens/pair_device_screen.dart';
 import '../../features/profile/ui/screens/manage_devices_screen.dart';
-import '../../features/home/models/models.dart';
 import '../../features/analytics/ui/screens/analytics_screen.dart';
 import '../../features/chat/ui/screens/chat_screen.dart';
 
@@ -124,22 +122,20 @@ final appRouterProvider = Provider<GoRouter>((ref) {
             path: '/home',
             builder: (_, _) => const HomeScreen(),
           ),
+          // Used to bounce fitness-type users straight to /activity — removed
+          // per explicit product direction: Glucose must always be reachable
+          // regardless of user type, whether or not a CGM is connected yet.
+          // A fitness-type user with no CGM connected sees GlucoseScreen's
+          // existing empty/no-data state (same one a diabetic-type user with
+          // no CGM sees) prompting them to connect one, rather than the
+          // screen being hidden from them entirely.
           GoRoute(
             path: '/glucose',
             builder: (_, _) => const GlucoseScreen(),
-            redirect: (context, state) {
-              final userType = ref.read(userProfileProvider).valueOrNull?.userType;
-              if (userType == UserType.fitness) return '/activity';
-              return null;
-            },
           ),
-          // No redirect for non-fitness users here (unlike /glucose above,
-          // which still bounces fitness users away) — diabetic-type users
-          // need this reachable too (steps/sleep/HRV/etc.), just not as
-          // their default landing tab. The bottom nav still only ever
-          // shows one of Glucose/Activity per user type (main_shell.dart);
-          // diabetic users get here via an explicit link on /glucose
-          // instead, glucose stays what they land on by default.
+          // Reachable by every user type — both from the bottom nav
+          // (main_shell.dart) and via the "Health & Activity" link on
+          // /glucose (glucose_screen.dart).
           GoRoute(
             path: '/activity',
             builder: (_, _) => const ActivityScreen(),

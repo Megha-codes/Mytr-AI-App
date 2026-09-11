@@ -97,20 +97,19 @@ class MainShell extends ConsumerWidget {
                   isSelected: location == '/home',
                   onTap: () => context.go('/home'),
                 ),
-                if (user?.userType == UserType.fitness)
-                  _NavItem(
-                    icon: LucideIcons.zap,
-                    label: 'Activity',
-                    isSelected: location == '/activity',
-                    onTap: () => context.go('/activity'),
-                  )
-                else
-                  _NavItem(
-                    icon: LucideIcons.activity,
-                    label: 'Glucose',
-                    isSelected: location == '/glucose',
-                    onTap: () => context.go('/glucose'),
-                  ),
+                // Always Glucose, regardless of user type — it used to swap
+                // to Activity for fitness-type users, but Glucose (and its
+                // "connect your CGM" empty state for anyone without one
+                // connected yet) must always be reachable, per explicit
+                // product direction. Activity stays reachable for everyone
+                // via the "Health & Activity" link on /glucose instead of
+                // needing its own nav slot too.
+                _NavItem(
+                  icon: LucideIcons.activity,
+                  label: 'Glucose',
+                  isSelected: location == '/glucose',
+                  onTap: () => context.go('/glucose'),
+                ),
                 const SizedBox(width: 48), // Space for FAB
                 _NavItem(
                   icon: LucideIcons.sparkles,
