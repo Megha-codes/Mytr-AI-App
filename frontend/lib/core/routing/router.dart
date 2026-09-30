@@ -21,6 +21,8 @@ import '../../features/devices/ui/screens/pair_device_screen.dart';
 import '../../features/profile/ui/screens/manage_devices_screen.dart';
 import '../../features/analytics/ui/screens/analytics_screen.dart';
 import '../../features/chat/ui/screens/chat_screen.dart';
+import '../../features/nutrition/providers/meals_list_provider.dart';
+import '../../features/nutrition/ui/screens/meal_detail_screen.dart';
 
 // Onboarding screens
 import '../../features/onboarding/ui/screens/intro_screen.dart';
@@ -167,6 +169,15 @@ final appRouterProvider = Provider<GoRouter>((ref) {
         path: '/meals',
         parentNavigatorKey: _rootNavigatorKey,
         builder: (_, _) => const MealsScreen(),
+      ),
+      // Reached by tapping a row in the "Today's meals" list
+      // (todays_meals_section.dart) — takes the already-fetched
+      // GroupedMeal as `extra` rather than re-fetching by id, since the
+      // list screen already has the full per-item data in hand.
+      GoRoute(
+        path: '/meals/detail',
+        parentNavigatorKey: _rootNavigatorKey,
+        builder: (_, state) => MealDetailScreen(meal: state.extra as GroupedMeal),
       ),
       // Reachable from both glucose_screen.dart and activity_screen.dart —
       // full screen, no bottom nav (same convention as /meals above), with

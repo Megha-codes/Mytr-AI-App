@@ -97,6 +97,38 @@ class MealLoggingNotifier extends AutoDisposeAsyncNotifier<MealLogEntry?> {
     }
   }
 
+  /// Corrects a logged item's food name and/or portion — PATCH
+  /// /nutrition/meals/{id}, which re-resolves nutrition server-side
+  /// through the same real IFCT -> USDA -> Gemini chain (see the backend
+  /// commit for patch_meal) rather than the caller supplying numbers
+  /// itself. Returns the updated MealSummary, or null on failure (state
+  /// carries the error for the UI to show).
+  Future<MealSummary?> editMealItem({
+    required String mealId,
+    String? foodName,
+    int? portionGrams,
+  }) async {
+    state = const AsyncLoading();
+
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.patch(
+        '/nutrition/meals/$mealId',
+        data: {
+          'food_name': ?foodName,
+          'portion_grams': ?portionGrams,
+        },
+      );
+
+      final summary = MealSummary.fromJson(response.data as Map<String, dynamic>);
+      state = const AsyncData(null);
+      return summary;
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      return null;
+    }
+  }
+
   void reset() => state = const AsyncData(null);
 }
 

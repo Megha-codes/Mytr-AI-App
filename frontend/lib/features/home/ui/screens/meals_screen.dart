@@ -10,6 +10,7 @@ import '../../../profile/providers/user_profile_provider.dart';
 import '../../providers/providers.dart';
 import '../widgets/meals_widgets.dart';
 import '../../../../core/widgets/shimmer_skeletons.dart';
+import '../../../nutrition/ui/widgets/todays_meals_section.dart';
 import 'dart:io';
 
 class MealsScreen extends ConsumerStatefulWidget {
@@ -408,7 +409,14 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
           Expanded(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(AppTheme.screenPadding),
-              child: _buildModeA(user.userType),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildModeA(user.userType),
+                  const SizedBox(height: 32),
+                  const TodaysMealsSection(),
+                ],
+              ),
             ),
           ),
         ],

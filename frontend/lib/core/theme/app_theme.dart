@@ -38,6 +38,13 @@ class AppTheme {
   static const Color accentOrangeDark  = Color(0xFFC2410C); // was 9A450D
   static const Color accentOrangeLight = Color(0xFFFFFAF3); // was FFF7ED
 
+  // Chart/ring accent — the meal-detail screen's 4 macro rings (protein/
+  // fat/carbs/fiber) need 4 visually distinct hues; accentCyan was aliased
+  // to brandPurple in the violet rebrand (see above) so there's no real
+  // teal left anywhere in the palette. Added as a narrowly-scoped chart
+  // accent, not a new brand color — reused nowhere else.
+  static const Color chartTeal          = Color(0xFF2DD4BF);
+
   // Glucose functional colours — lightened one step too, kept conservative
   // since these carry clinical meaning (still clearly distinct low/high/
   // hypo/hyper at a glance, just softer).

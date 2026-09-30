@@ -25,6 +25,7 @@ class LucideIcons {
   static const IconData clipboardList = Icons.list_alt_outlined;
   static const IconData clock = Icons.schedule_outlined;
   static const IconData droplet = Icons.water_drop_outlined;
+  static const IconData edit3 = Icons.edit_outlined;
   static const IconData eye = Icons.visibility_outlined;
   static const IconData eyeOff = Icons.visibility_off_outlined;
   static const IconData flashlight = Icons.flashlight_on;
@@ -51,6 +52,7 @@ class LucideIcons {
   static const IconData stethoscope = Icons.medical_services_outlined;
   static const IconData target = Icons.track_changes;
   static const IconData user = Icons.person_outline;
+  static const IconData utensils = Icons.restaurant_outlined;
   static const IconData watch = Icons.watch_outlined;
   static const IconData wifiOff = Icons.wifi_off;
   static const IconData x = Icons.close;
