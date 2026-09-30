@@ -85,6 +85,15 @@ class MealLogEntry {
   final double fatG;
   final double fiberG;
   final double glycaemicLoad;
+  // "ifct" | "usda" | "gemini_estimate" | "manual" — which resolution tier
+  // actually produced these numbers. See nutritionVerified for the
+  // user-facing distinction that matters: a database match vs a guess.
+  final String nutritionSource;
+  // True for a real database match (IFCT/USDA) or a user-entered manual
+  // value; false only for gemini_estimate — a guess with no database hit.
+  // This is the field the UI must surface (not nutritionSource directly)
+  // so a user can never mistake an estimate for a verified value.
+  final bool nutritionVerified;
 
   const MealLogEntry({
     required this.mealId,
@@ -96,6 +105,8 @@ class MealLogEntry {
     required this.fatG,
     required this.fiberG,
     required this.glycaemicLoad,
+    required this.nutritionSource,
+    required this.nutritionVerified,
   });
 
   factory MealLogEntry.fromJson(Map<String, dynamic> json) => MealLogEntry(
@@ -108,5 +119,7 @@ class MealLogEntry {
         fatG: (json['fat_g'] as num).toDouble(),
         fiberG: (json['fiber_g'] as num).toDouble(),
         glycaemicLoad: (json['glycaemic_load'] as num).toDouble(),
+        nutritionSource: json['nutrition_source'] as String? ?? 'manual',
+        nutritionVerified: json['nutrition_verified'] as bool? ?? true,
       );
 }

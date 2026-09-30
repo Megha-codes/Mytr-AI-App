@@ -6,8 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/api/api_client.dart';
 import '../../models/models.dart';
 import '../../../nutrition/models/food_models.dart';
+import '../../../nutrition/providers/meal_logging_provider.dart';
 import '../../../nutrition/services/meal_recognition_service.dart';
-import 'nutrition_provider.dart';
+import 'dashboard_provider.dart';
 
 // ── Internal detail type (not exposed to UI) ──────────────────────────────────
 
@@ -26,6 +27,16 @@ class RecognitionResult {
   final List<String> detectedItems;
   final bool requiresConfirmation;
   final String? confirmationMessage;
+  // Raw Gemini-detected items (name + portion_grams), retained so
+  // confirmAndLog can resolve+log each one for real through the backend's
+  // actual IFCT -> USDA -> Gemini chain, rather than the totals above
+  // (which are only ever a client-side USDA-only preview shown before the
+  // user confirms — never what gets persisted).
+  final List<FoodItem> foodItems;
+  // Shared across every item logged from this one capture, so they can
+  // later be grouped back into "one meal" (meal_logs has no explicit
+  // grouping column — same meal_time is the join key).
+  final DateTime mealTime;
 
   RecognitionResult({
     required this.meal,
@@ -33,7 +44,9 @@ class RecognitionResult {
     required this.detectedItems,
     this.requiresConfirmation = false,
     this.confirmationMessage,
-  });
+    this.foodItems = const [],
+    DateTime? mealTime,
+  }) : mealTime = mealTime ?? DateTime.now();
 }
 
 // ── Notifier ──────────────────────────────────────────────────────────────────
@@ -104,11 +117,12 @@ class MealRecognitionNotifier
       }
 
       final mealName = detectedNames.join(', ');
+      final mealTime = DateTime.now();
 
       final meal = LoggedMeal(
         id: '',
         name: mealName,
-        timestamp: DateTime.now(),
+        timestamp: mealTime,
         calories: totalCalories.round(),
         carbsG: totalCarbs.round(),
         proteinG: totalProtein.round(),
@@ -126,20 +140,46 @@ class MealRecognitionNotifier
             ? 'Could not find nutrition data for the detected foods. '
                 'Please verify before logging.'
             : null,
+        foodItems: foodItems,
+        mealTime: mealTime,
       ));
     } catch (e, st) {
       state = AsyncError(e, st);
     }
   }
 
-  /// Logs the recognised meal via the existing /nutrition/log endpoint,
-  /// then invalidates the dashboard so nutrition cards refresh.
-  Future<void> confirmAndLog() async {
-    if (!state.hasValue || state.value == null) return;
+  /// Logs every detected item individually through POST /nutrition/log-meal
+  /// (no pre-supplied numbers — the backend's real IFCT -> USDA -> Gemini
+  /// resolver decides each one), so each ends up with its own honest
+  /// nutrition_source/nutrition_verified instead of one combined "manual,
+  /// always verified" row. Returns the logged entries (empty if every item
+  /// failed) so a caller can show what was actually persisted; throws if
+  /// there's nothing to log at all (recognizeMeal was never called, or
+  /// found zero items).
+  ///
+  /// Note: not atomic — if some items succeed and one fails partway
+  /// through, the successful ones are already real, committed MealLog
+  /// rows; there's no rollback. Acceptable here since each row is
+  /// independently correct and editable/deletable on its own via the
+  /// existing PATCH/DELETE /nutrition/meals/{id} routes.
+  Future<List<MealLogEntry>> confirmAndLog() async {
+    final result = state.value;
+    if (result == null || result.foodItems.isEmpty) {
+      throw StateError('No recognized food items to log');
+    }
 
-    final meal = state.value!.meal;
-    await ref.read(nutritionProvider.notifier).logMeal(meal);
+    final logged = <MealLogEntry>[];
+    for (final item in result.foodItems) {
+      final entry = await ref.read(mealLoggingProvider.notifier).logDetectedItem(
+            foodItem: item,
+            mealTime: result.mealTime,
+          );
+      if (entry != null) logged.add(entry);
+    }
+
+    ref.invalidate(dashboardProvider);
     state = const AsyncData(null);
+    return logged;
   }
 
   void reset() => state = const AsyncData(null);

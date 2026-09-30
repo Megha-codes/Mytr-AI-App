@@ -56,6 +56,47 @@ class MealLoggingNotifier extends AutoDisposeAsyncNotifier<MealLogEntry?> {
     }
   }
 
+  /// Logs a Gemini-detected food item WITHOUT pre-supplying nutrition
+  /// numbers, so the backend's real resolver (IFCT -> USDA -> Gemini
+  /// estimate, source_router.resolve_nutrition) decides them server-side —
+  /// unlike [saveFood] above, which is for the manual search-and-pick flow
+  /// where the user already chose a specific USDA result client-side.
+  ///
+  /// This is what makes per-item nutrition_source/nutrition_verified real
+  /// for a multi-item photographed meal: each detected food gets its own
+  /// MealLog row and its own honest verified/estimate flag, instead of the
+  /// old flow's client-side USDA-only lookup summed into one combined
+  /// "manual, always verified" row. Same resolution algorithm as ever —
+  /// this just calls it correctly, once per item, instead of not calling
+  /// it at all.
+  Future<MealLogEntry?> logDetectedItem({
+    required FoodItem foodItem,
+    DateTime? mealTime,
+  }) async {
+    state = const AsyncLoading();
+
+    try {
+      final apiClient = ref.read(apiClientProvider);
+      final response = await apiClient.post(
+        '/nutrition/log-meal',
+        data: {
+          'food_name': foodItem.name,
+          'portion_grams': foodItem.portionGrams,
+          'meal_time': (mealTime ?? DateTime.now().toUtc()).toIso8601String(),
+        },
+      );
+
+      final entry = MealLogEntry.fromJson(
+        response.data as Map<String, dynamic>,
+      );
+      state = AsyncData(entry);
+      return entry;
+    } catch (e, st) {
+      state = AsyncError(e, st);
+      return null;
+    }
+  }
+
   void reset() => state = const AsyncData(null);
 }
 
