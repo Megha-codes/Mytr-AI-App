@@ -17,6 +17,7 @@ from sqlalchemy import select, text
 from app.api import nutrition
 from app.core.security import create_access_token
 from app.database import get_db
+from app.models.ifct_food import IFCTFood
 from app.models.meal_log import MealLog
 
 from .conftest import build_sqlite_db, make_user
@@ -205,6 +206,64 @@ async def test_patch_meal_recomputes_glycaemic_load_when_carbs_change(app_and_db
     updated = resp.json()["glycaemic_load"]
 
     assert updated != original
+
+
+async def test_patch_meal_reresolves_nutrition_when_food_name_corrected(app_and_db):
+    """The meal-detail screen's "edit food & quantity" -- correcting a
+    misidentified food must re-resolve through the real IFCT -> USDA ->
+    Gemini chain (source_router.resolve_nutrition), not just relabel the
+    stale numbers from whatever was originally detected."""
+    client, session_factory = app_and_db
+    user, token = await _token_for(session_factory, "a@example.com")
+    meal_id = await _insert_meal_orm(
+        session_factory, user.id, datetime.now(timezone.utc),
+        "Wrong Food", calories=999, carbs_g=999.0, source="gemini_estimate", verified=False,
+    )
+
+    async with session_factory() as session:
+        session.add(IFCTFood(
+            id=uuid.uuid4(), code="Z001", name="Banana, ripe",
+            energy_kcal=90.0, available_carb_g=22.0, protein_g=1.2,
+            fat_g=0.2, fibre_g=1.1, sugars_g=15.0,
+        ))
+        await session.commit()
+
+    resp = client.patch(
+        f"/nutrition/meals/{meal_id}",
+        json={"food_name": "Banana, ripe", "portion_grams": 200},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+
+    # 200g at 90 kcal/100g = 180, not the stale 999 the meal was logged with.
+    assert body["calories"] == 180
+    assert body["carbs_g"] == 44.0
+    assert body["nutrition_source"] == "ifct"
+    assert body["nutrition_verified"] is True
+    assert body["portion_grams"] == 200
+    assert body["food_name"] == "Banana, ripe"
+
+
+async def test_patch_meal_explicit_numeric_override_skips_reresolution(app_and_db):
+    """An explicit numeric value alongside food_name/portion_grams wins —
+    the backward-compatible direct-override path, distinct from the new
+    edit flow above which never supplies these."""
+    client, session_factory = app_and_db
+    user, token = await _token_for(session_factory, "a@example.com")
+    meal_id = await _insert_meal_orm(
+        session_factory, user.id, datetime.now(timezone.utc), "Original", calories=300, carbs_g=40.0,
+    )
+
+    resp = client.patch(
+        f"/nutrition/meals/{meal_id}",
+        json={"food_name": "Something else entirely", "calories": 500},
+        headers=_auth(token),
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["calories"] == 500  # explicit value honored, not re-resolved
+    assert body["food_name"] == "Something else entirely"
 
 
 async def test_patch_meal_404s_for_another_users_meal(app_and_db):

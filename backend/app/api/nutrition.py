@@ -18,6 +18,7 @@ from ..schemas.nutrition import (
     FoodItemResponse,
     FoodSearchRequest,
     FoodSearchResponse,
+    MealGlucoseResponse,
     MealListResponse,
     MealPatchRequest,
     MealSummaryResponse,
@@ -29,11 +30,13 @@ from ..schemas.nutrition import (
 from ..services.health.daily_rollup import local_date, local_date_bounds
 from ..services.meal_enrichment_service import RawFoodItem
 from ..services.nutrition.log_meal_service import log_meal_for_user
+from ..services.nutrition.meal_glucose_response import get_meal_glucose_response
 from ..services.nutrition.meals_today import (
     daily_nutrition_totals,
     list_meals_for_user,
     meal_label,
 )
+from ..services.nutrition.source_router import resolve_nutrition
 from ..services.shared_instances import gemini_service, meal_enrichment_service, usda_service
 from .auth import get_current_user
 
@@ -271,6 +274,7 @@ def _meal_summary(meal: MealLog) -> MealSummaryResponse:
         id=str(meal.id),
         meal_time=meal.meal_time,
         food_name=meal_label(meal.food_items),
+        portion_grams=(meal.food_items or [{}])[0].get("portion_grams"),
         calories=meal.total_calories,
         carbs_g=float(meal.total_carbs_g) if meal.total_carbs_g is not None else None,
         protein_g=float(meal.total_protein_g) if meal.total_protein_g is not None else None,
@@ -315,27 +319,61 @@ async def patch_meal(
 ):
     meal = await _load_owned_meal(db, meal_id, current_user.id)
 
+    food_or_portion_changed = False
     if request.food_name is not None:
         food_items = list(meal.food_items or [{}])
         food_items[0] = {**food_items[0], "name": request.food_name}
         meal.food_items = food_items  # reassign (not in-place mutate) so the ORM sees the change
+        food_or_portion_changed = True
+    if request.portion_grams is not None:
+        food_items = list(meal.food_items or [{}])
+        food_items[0] = {**food_items[0], "portion_grams": request.portion_grams}
+        meal.food_items = food_items
+        food_or_portion_changed = True
     if request.meal_time is not None:
         meal_time = request.meal_time
         if meal_time.tzinfo is None:
             meal_time = meal_time.replace(tzinfo=timezone.utc)
         meal.meal_time = meal_time
-    if request.calories is not None:
-        meal.total_calories = round(request.calories)
-    if request.carbs_g is not None:
-        meal.total_carbs_g = request.carbs_g
-    if request.protein_g is not None:
-        meal.total_protein_g = request.protein_g
-    if request.fat_g is not None:
-        meal.total_fat_g = request.fat_g
-    if request.fiber_g is not None:
-        meal.total_fiber_g = request.fiber_g
 
-    if request.carbs_g is not None or request.food_name is not None:
+    explicit_numeric_override = any(v is not None for v in (
+        request.calories, request.carbs_g, request.protein_g, request.fat_g, request.fiber_g,
+    ))
+
+    if food_or_portion_changed and not explicit_numeric_override:
+        # The meal-detail screen's "edit food & quantity" always lands
+        # here: a corrected food name or portion needs real numbers, not a
+        # stale calculation carried over from whatever was originally
+        # detected. Same resolution chain every other logging path uses
+        # (source_router.resolve_nutrition — IFCT -> USDA -> Gemini
+        # estimate), just re-run against the corrected input.
+        portion = (meal.food_items or [{}])[0].get("portion_grams") or 100
+        resolved = await resolve_nutrition(db, meal_label(meal.food_items), usda_service, gemini_service)
+        ratio = portion / 100.0
+        meal.total_calories = round(resolved.calories_per_100g * ratio)
+        meal.total_carbs_g = resolved.carbs_per_100g * ratio
+        meal.total_protein_g = resolved.protein_per_100g * ratio
+        meal.total_fat_g = resolved.fat_per_100g * ratio
+        meal.total_fiber_g = resolved.fiber_per_100g * ratio
+        meal.nutrition_source = resolved.source
+        meal.nutrition_verified = resolved.verified
+    else:
+        # Caller already knows the exact numbers it wants (kept for
+        # backward compatibility — the new edit flow never takes this
+        # path). An explicit value here wins over re-resolution for that
+        # field even if food_name/portion_grams were also supplied.
+        if request.calories is not None:
+            meal.total_calories = round(request.calories)
+        if request.carbs_g is not None:
+            meal.total_carbs_g = request.carbs_g
+        if request.protein_g is not None:
+            meal.total_protein_g = request.protein_g
+        if request.fat_g is not None:
+            meal.total_fat_g = request.fat_g
+        if request.fiber_g is not None:
+            meal.total_fiber_g = request.fiber_g
+
+    if food_or_portion_changed or request.carbs_g is not None:
         # Carbs and/or the GI lookup key (food name) changed — glycaemic
         # load is derived from both, so it goes stale otherwise.
         raw = RawFoodItem(
@@ -354,6 +392,16 @@ async def patch_meal(
     await db.commit()
     await db.refresh(meal)
     return _meal_summary(meal)
+
+
+@router.get("/meals/{meal_id}/glucose-response", response_model=MealGlucoseResponse)
+async def get_meal_glucose_response_route(
+    meal_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    meal = await _load_owned_meal(db, meal_id, current_user.id)
+    return await get_meal_glucose_response(db, meal)
 
 
 @router.delete("/meals/{meal_id}", status_code=status.HTTP_204_NO_CONTENT)
