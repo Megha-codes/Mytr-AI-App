@@ -9,7 +9,6 @@ import '../../../../core/widgets/stat_widgets.dart';
 import '../../../profile/providers/user_profile_provider.dart';
 import '../../providers/providers.dart';
 import '../widgets/meals_widgets.dart';
-import '../../../../core/widgets/shimmer_skeletons.dart';
 import '../../../nutrition/ui/widgets/todays_meals_section.dart';
 import 'dart:io';
 
@@ -363,11 +362,7 @@ class _MealsScreenState extends ConsumerState<MealsScreen> {
                       },
                     ),
                   const SizedBox(height: 32),
-                  nutritionAsync.when(
-                    data: (nutrition) => MealHistoryList(meals: nutrition.todaysMeals),
-                    loading: () => const ListShimmer(count: 2),
-                    error: (_, _) => const SizedBox.shrink(),
-                  ),
+                  const TodaysMealsSection(),
                 ],
               ),
             ),
